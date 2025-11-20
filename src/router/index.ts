@@ -12,6 +12,10 @@ import PageBody from '@/modules/shared/structure/PageBody.vue'
 // VIEWS
 import Login from '@/modules/login/views/Login.vue'
 import Home from '@/modules/home/views/Home.vue'
+import Onboarding from '@/modules/onboarding/views/Onboarding.vue'
+import Schedule from '@/modules/schedule/views/Schedule.vue'
+import ProfessionalProfile from '@/modules/professional/views/ProfessionalProfile.vue'
+import EstablishmentSettings from '@/modules/establishment/views/EstablishmentSettings.vue'
 
 const ifNotAuthenticated = (
   to: RouteLocationNormalized | undefined,
@@ -35,12 +39,26 @@ const ifAuthenticated = (
 ) => {
   const auth = useAuthStore()
 
-  if (auth.isAuthenticated) {
-    next()
+  // Se não estiver autenticado, sempre vai para login
+  if (!auth.isAuthenticated) {
+    next('/login')
     return
   }
 
-  next('/login')
+  // Se estiver autenticado mas não concluiu onboarding,
+  // qualquer rota (exceto a própria de onboarding) redireciona para onboarding
+  if (!auth.hasCompletedOnboarding && to?.name !== 'onboarding') {
+    next('/onboarding')
+    return
+  }
+
+  // Se onboarding já foi concluído, não faz sentido voltar para a tela de onboarding
+  if (auth.hasCompletedOnboarding && to?.name === 'onboarding') {
+    next('/home')
+    return
+  }
+
+  next()
 }
 
 const router = createRouter({
@@ -53,11 +71,34 @@ const router = createRouter({
       component: Login,
     },
     {
+      path: '/onboarding',
+      name: 'onboarding',
+      beforeEnter: ifAuthenticated,
+      component: Onboarding,
+    },
+    {
       path: '/',
       redirect: 'home',
       beforeEnter: ifAuthenticated,
       component: PageBody,
-      children: [{ path: 'home', name: 'home', component: Home }],
+      children: [
+        { path: 'home', name: 'home', component: Home },
+        {
+          path: 'agenda',
+          name: 'agenda',
+          component: Schedule,
+        },
+        {
+          path: 'profissional',
+          name: 'professional-profile',
+          component: ProfessionalProfile,
+        },
+        {
+          path: 'estabelecimento',
+          name: 'establishment-settings',
+          component: EstablishmentSettings,
+        },
+      ],
     },
   ],
 })
