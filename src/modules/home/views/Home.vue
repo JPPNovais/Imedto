@@ -3,9 +3,11 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/lib/supabaseClient'
+import { useFeedbackStore } from '@/stores/feedback'
 
 const auth = useAuthStore()
 const router = useRouter()
+const feedback = useFeedbackStore()
 
 const dashboard = reactive({
   cadastroUsuarioPercentual: 0,
@@ -18,6 +20,22 @@ const dashboard = reactive({
 const isLoadingDashboard = ref(false)
 const showTutorial = ref(false)
 const isOwnerEstabelecimento = ref(false)
+const hasDismissedTutorial = ref(false)
+const pendingInvites = ref<
+  {
+    id: string
+    estabelecimentoId: string | null
+    estabelecimento_nome: string | null
+    estabelecimento_foto: string | null
+  }[]
+>([])
+const scheduleSummary = reactive({
+  totalHoje: 0,
+  totalSemana: 0,
+  totalMes: 0,
+  proximoHorario: null as string | null,
+  proximoTitulo: '' as string,
+})
 
 async function loadDashboard() {
   isLoadingDashboard.value = true
@@ -47,6 +65,13 @@ async function loadDashboard() {
 async function loadTutorialState() {
   if (!auth.currentUser?.id) return
 
+  // Se o usuário já ocultou o tutorial nesta máquina, não mostra mais automaticamente
+  if (window.localStorage.getItem('imedto_tutorial_dismissed') === '1') {
+    hasDismissedTutorial.value = true
+    showTutorial.value = false
+    return
+  }
+
   const [usuarioResp, estabResp] = await Promise.all([
     supabase
       .from('usuarios')
@@ -65,17 +90,79 @@ async function loadTutorialState() {
   isOwnerEstabelecimento.value = !!estabResp.data?.id
 }
 
+async function loadPendingInvites() {
+  if (!auth.currentUser?.email) return
+
+  const { data, error } = await supabase
+    .from('solicitacao_vinculo_profissional_estabelecimento')
+    .select(
+      `
+      id,
+      status,
+      estabelecimento_id,
+      estabelecimento:estabelecimentos (
+        nome_fantasia,
+        razao_social,
+        foto_url
+      )
+    `,
+    )
+    .eq('email_profissional', auth.currentUser.email.toLowerCase())
+    .eq('status', 'pendente')
+
+  if (error) {
+    console.error('Erro ao carregar convites pendentes', error)
+    return
+  }
+
+  pendingInvites.value =
+    data?.map((s: any) => ({
+      id: s.id,
+      estabelecimentoId: s.estabelecimento_id ?? null,
+      estabelecimento_nome:
+        s.estabelecimento?.nome_fantasia ??
+        s.estabelecimento?.razao_social ??
+        null,
+      estabelecimento_foto: s.estabelecimento?.foto_url ?? null,
+	    })) ?? []
+}
+
+async function loadScheduleSummary() {
+  const { data, error } = await supabase.rpc('agenda_resumo_profissional')
+  if (error) {
+    console.error('Erro ao carregar resumo da agenda', error)
+    return
+  }
+
+  const row = Array.isArray(data) ? data[0] : data
+  if (row) {
+    scheduleSummary.totalHoje = row.total_hoje ?? 0
+    scheduleSummary.totalSemana = row.total_semana ?? 0
+    scheduleSummary.totalMes = row.total_mes ?? 0
+    scheduleSummary.proximoHorario = row.proximo_horario ?? null
+    scheduleSummary.proximoTitulo = row.proximo_titulo ?? ''
+  }
+}
+
 function openTutorial() {
   showTutorial.value = true
 }
 
 async function finishTutorial() {
   showTutorial.value = false
+  window.localStorage.setItem('imedto_tutorial_dismissed', '1')
+  hasDismissedTutorial.value = true
   if (!auth.currentUser?.id) return
   await supabase
     .from('usuarios')
     .update({ tutorial_visto: true })
     .eq('id', auth.currentUser.id)
+}
+
+function dismissTutorialForNow() {
+  showTutorial.value = false
+  window.localStorage.setItem('imedto_tutorial_dismissed', '1')
+  hasDismissedTutorial.value = true
 }
 
 function goToProfessionalSetup() {
@@ -84,6 +171,51 @@ function goToProfessionalSetup() {
 
 function goToEstablishmentSetup() {
   router.push({ name: 'establishment-settings' })
+}
+
+async function updateInviteStatus(inviteId: string, status: 'recusado') {
+  const { error } =
+    await supabase
+      .from('solicitacao_vinculo_profissional_estabelecimento')
+      .update({ status })
+      .eq('id', inviteId)
+
+  if (error) {
+    console.error(error)
+    feedback.error('Não foi possível atualizar o convite.')
+    return
+  }
+
+  feedback.success(
+    status === 'aceito'
+      ? 'Convite aceito. O estabelecimento será notificado.'
+      : 'Convite recusado. O estabelecimento será notificado.',
+  )
+  await loadPendingInvites()
+  await loadDashboard()
+}
+
+function acceptInvite(inviteId: string) {
+  // Usa RPC para aceitar e criar vínculo automaticamente
+  supabase
+    .rpc('aceitar_convite_profissional', { solicitacao_id: inviteId })
+    .then(({ error }) => {
+      if (error) {
+        console.error(error)
+        feedback.error('Não foi possível aceitar o convite.')
+        return
+      }
+
+      feedback.success(
+        'Convite aceito e vínculo com o estabelecimento criado com sucesso.',
+      )
+      loadPendingInvites()
+      loadDashboard()
+    })
+}
+
+function rejectInvite(inviteId: string) {
+  return updateInviteStatus(inviteId, 'recusado')
 }
 
 const tutorialSteps = computed(() => {
@@ -142,7 +274,12 @@ const tutorialSteps = computed(() => {
 })
 
 onMounted(async () => {
-  await Promise.all([loadDashboard(), loadTutorialState()])
+  await Promise.all([
+    loadDashboard(),
+    loadTutorialState(),
+    loadPendingInvites(),
+    loadScheduleSummary(),
+  ])
 })
 </script>
 
@@ -175,11 +312,115 @@ onMounted(async () => {
       </div>
     </header>
 
-    <div class="space-y-4 max-w-3xl">
-	      <div
-	        v-if="!dashboard.profissionalCompleto"
-	        class="bg-white shadow-sm rounded-xl p-5 border border-gray-100"
-	      >
+    <div class="space-y-4 max-w-5xl">
+      <div
+        v-if="pendingInvites.length"
+        class="bg-white shadow-sm rounded-xl p-5 border border-primary-light"
+      >
+        <div class="flex items-center justify-between mb-3 gap-4">
+          <div>
+            <h2 class="text-sm font-semibold text-primary-700">
+              Você tem convites pendentes
+            </h2>
+            <p class="text-xs text-gray-500">
+              Aceite os convites para se vincular aos estabelecimentos que
+              solicitaram sua participação.
+            </p>
+          </div>
+        </div>
+        <ul class="space-y-2 text-sm">
+          <li
+            v-for="invite in pendingInvites"
+            :key="invite.id"
+            class="flex items-start gap-3"
+          >
+            <div
+              class="h-8 w-8 rounded-full bg-primary-light flex items-center justify-center text-primary-dark text-xs font-semibold overflow-hidden"
+            >
+              <img
+                v-if="invite.estabelecimento_foto"
+                :src="invite.estabelecimento_foto"
+                alt="Logo do estabelecimento"
+                class="h-full w-full object-cover"
+              />
+              <span v-else>
+                {{ invite.estabelecimento_nome?.[0] ?? 'E' }}
+              </span>
+            </div>
+            <div>
+              <p class="text-gray-800">
+                {{ invite.estabelecimento_nome || 'Estabelecimento' }}
+              </p>
+              <p class="text-xs text-gray-500">
+                Este estabelecimento convidou você para atuar como
+                profissional. Você pode aceitar ou recusar o convite abaixo.
+              </p>
+              <div class="mt-1 flex gap-3 text-xs">
+                <button
+                  class="text-primary-600 hover:underline font-semibold"
+                  type="button"
+                  @click="acceptInvite(invite.id)"
+                >
+                  Aceitar convite
+                </button>
+                <button
+                  class="text-gray-500 hover:underline"
+                  type="button"
+                  @click="rejectInvite(invite.id)"
+                >
+                  Recusar
+                </button>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div
+          class="bg-white shadow-sm rounded-xl p-4 border border-gray-100 flex flex-col gap-1"
+        >
+          <p class="text-xs text-gray-500">
+            Agendamentos de hoje
+          </p>
+          <p class="text-2xl font-bold text-primary-dark">
+            {{ scheduleSummary.totalHoje }}
+          </p>
+          <p class="text-[11px] text-gray-500">
+            Atendimentos marcados para o dia atual.
+          </p>
+        </div>
+        <div
+          class="bg-white shadow-sm rounded-xl p-4 border border-gray-100 flex flex-col gap-1"
+        >
+          <p class="text-xs text-gray-500">
+            Semana atual
+          </p>
+          <p class="text-2xl font-bold text-primary-dark">
+            {{ scheduleSummary.totalSemana }}
+          </p>
+          <p class="text-[11px] text-gray-500">
+            Total de agendamentos entre segunda e domingo.
+          </p>
+        </div>
+        <div
+          class="bg-white shadow-sm rounded-xl p-4 border border-gray-100 flex flex-col gap-1"
+        >
+          <p class="text-xs text-gray-500">
+            Mês atual
+          </p>
+          <p class="text-2xl font-bold text-primary-dark">
+            {{ scheduleSummary.totalMes }}
+          </p>
+          <p class="text-[11px] text-gray-500">
+            Quantidade de atendimentos previstos neste mês.
+          </p>
+        </div>
+      </div>
+      <div
+        v-if="!dashboard.profissionalCompleto"
+        class="bg-white shadow-sm rounded-xl p-5 border border-gray-100"
+      >
         <div class="flex items-center justify-between mb-2">
           <div>
             <h2 class="text-sm font-semibold text-primary-700">
@@ -230,7 +471,7 @@ onMounted(async () => {
       </div>
 
       <div
-        v-if="dashboard.cadastroEstabelecimentoPercentual < 100"
+        v-if="isOwnerEstabelecimento && dashboard.cadastroEstabelecimentoPercentual < 100"
         class="bg-white shadow-sm rounded-xl p-5 border border-gray-100"
       >
         <div class="flex items-center justify-between mb-2">
@@ -361,7 +602,7 @@ onMounted(async () => {
           <button
             class="text-xs text-gray-500 underline"
             type="button"
-            @click="showTutorial = false"
+            @click="dismissTutorialForNow"
           >
             Ver depois
           </button>

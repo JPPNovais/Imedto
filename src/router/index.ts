@@ -16,6 +16,8 @@ import Onboarding from '@/modules/onboarding/views/Onboarding.vue'
 import Schedule from '@/modules/schedule/views/Schedule.vue'
 import ProfessionalProfile from '@/modules/professional/views/ProfessionalProfile.vue'
 import EstablishmentSettings from '@/modules/establishment/views/EstablishmentSettings.vue'
+import ProfessionalsManagement from '@/modules/professionals/views/ProfessionalsManagement.vue'
+import PermissionsManagement from '@/modules/permissions/views/PermissionsManagement.vue'
 
 const ifNotAuthenticated = (
   to: RouteLocationNormalized | undefined,
@@ -89,7 +91,7 @@ const router = createRouter({
           component: Schedule,
         },
         {
-          path: 'profissional',
+          path: 'perfil-profissional',
           name: 'professional-profile',
           component: ProfessionalProfile,
         },
@@ -97,6 +99,16 @@ const router = createRouter({
           path: 'estabelecimento',
           name: 'establishment-settings',
           component: EstablishmentSettings,
+        },
+        {
+          path: 'profissionais',
+          name: 'professionals-management',
+          component: ProfessionalsManagement,
+        },
+        {
+          path: 'permissoes',
+          name: 'permissions-management',
+          component: PermissionsManagement,
         },
       ],
     },

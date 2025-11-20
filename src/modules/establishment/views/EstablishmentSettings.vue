@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedbackStore } from '@/stores/feedback'
-import { formatCpfCnpj } from '@/utils/masks'
+import { formatCpfCnpj, onlyDigits } from '@/utils/masks'
 
 type TipoSala = {
   id: string
@@ -52,7 +52,8 @@ async function loadData() {
         .from('estabelecimentos')
         .select('id, nome_fantasia, cpf_cnpj')
         .eq('owner_usuario_id', auth.currentUser.id)
-        .order('created_at')
+        .order('created_at', { ascending: true })
+        .limit(1)
         .maybeSingle(),
       supabase
         .from('tipo_sala_atendimento')
@@ -93,9 +94,23 @@ async function saveEstabelecimento() {
     router.push('/login')
     return
   }
+  if (!formEstab.nomeFantasia) {
+    feedback.error('Informe o nome do estabelecimento.')
+    return
+  }
 
-  if (!formEstab.nomeFantasia || !formEstab.cpfCnpj) {
-    feedback.error('Informe nome do estabelecimento e CPF/CNPJ.')
+  let cpfCnpjToSave: string | null = null
+  const digits = onlyDigits(formEstab.cpfCnpj)
+
+  if (digits.length === 0) {
+    cpfCnpjToSave = null
+  } else if (digits.length === 14) {
+    cpfCnpjToSave = formatCpfCnpj(digits)
+  } else if (digits.length === 11) {
+    feedback.error('Use apenas CNPJ (14 dígitos) ou deixe em branco.')
+    return
+  } else {
+    feedback.error('CNPJ incompleto. Verifique e tente novamente.')
     return
   }
 
@@ -104,7 +119,7 @@ async function saveEstabelecimento() {
   try {
     const payload = {
       nome_fantasia: formEstab.nomeFantasia,
-      cpf_cnpj: formEstab.cpfCnpj,
+      cpf_cnpj: cpfCnpjToSave,
       owner_usuario_id: auth.currentUser.id as string,
       tipo_pessoa: 'PJ',
     }
@@ -312,4 +327,3 @@ onMounted(() => {
     </div>
   </section>
 </template>
-
