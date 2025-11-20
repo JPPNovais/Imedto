@@ -9,10 +9,14 @@ type Evento = {
   id: string
   data_hora_inicio: string
   data_hora_fim: string | null
-  titulo: string | null
   status: string
+  tipo_consulta: string | null
   paciente_id: string | null
   paciente_nome: string | null
+  profissional_id: string | null
+  especialidade_id: string | null
+  paciente_nome_agenda: string | null
+   paciente_telefone_agenda: string | null
 }
 
 type Periodo = 'dia' | 'semana' | 'mes'
@@ -26,12 +30,21 @@ const activePeriod = ref<Periodo>('dia')
 const selectedDate = ref<string>(new Date().toISOString().substring(0, 10))
 const profissionalId = ref<string | null>(null)
 const estabelecimentoId = ref<string | null>(null)
+const filterProfessionalId = ref<string>('')
+const filterSpecialtyId = ref<string>('')
 
 const isCreating = ref(false)
+const editingEventId = ref<string | null>(null)
 const createForm = reactive({
   date: new Date().toISOString().substring(0, 10),
   time: '09:00',
   title: '',
+  durationMinutes: 30,
+  tipoConsulta: 'consulta',
+  patientName: '',
+  patientPhone: '',
+  specialtyId: '',
+  professionalId: '',
 })
 
 const isLinkingPatient = ref(false)
@@ -43,6 +56,79 @@ const patientForm = reactive({
 })
 const foundPatientId = ref<string | null>(null)
 const isSearchingPatient = ref(false)
+
+type ProfessionalOption = {
+  id: string
+  nome: string
+  especialidadeId: string | null
+  especialidadeNome: string | null
+}
+
+type SpecialtyOption = {
+  id: string
+  nome: string
+}
+
+const professionalOptions = ref<ProfessionalOption[]>([])
+const specialtyOptions = ref<SpecialtyOption[]>([])
+const occupiedSlots = ref<string[]>([])
+
+const filteredProfessionalOptions = computed(() => {
+  if (!createForm.specialtyId) return professionalOptions.value
+  return professionalOptions.value.filter(
+    (p) => p.especialidadeId === createForm.specialtyId,
+  )
+})
+
+const filterSummary = computed(() => {
+  const esp =
+    filterSpecialtyId.value &&
+    specialtyOptions.value.find((e) => e.id === filterSpecialtyId.value)
+  const prof =
+    filterProfessionalId.value &&
+    professionalOptions.value.find((p) => p.id === filterProfessionalId.value)
+
+  const espLabel = esp ? esp.nome : 'todas as especialidades'
+  const profLabel = prof ? prof.nome : 'todos os profissionais'
+
+  return `Filtrando por ${espLabel}, ${profLabel}.`
+})
+
+watch(
+  () => createForm.specialtyId,
+  (newId) => {
+    if (!newId) return
+    const currentProf = professionalOptions.value.find(
+      (p) => p.id === createForm.professionalId,
+    )
+    if (currentProf && currentProf.especialidadeId === newId) return
+    const profForSpec = professionalOptions.value.find(
+      (p) => p.especialidadeId === newId,
+    )
+    if (profForSpec) {
+      createForm.professionalId = profForSpec.id
+    }
+  },
+)
+
+watch(
+  () => createForm.professionalId,
+  (newId) => {
+    if (!newId) return
+    const prof = professionalOptions.value.find((p) => p.id === newId)
+    if (prof?.especialidadeId && createForm.specialtyId !== prof.especialidadeId) {
+      createForm.specialtyId = prof.especialidadeId
+    }
+  },
+)
+
+watch(filterProfessionalId, () => {
+  loadEvents()
+})
+
+watch(filterSpecialtyId, () => {
+  loadEvents()
+})
 
 function getRange(period: Periodo) {
   const base = selectedDate.value
@@ -84,18 +170,30 @@ async function loadEvents() {
         id,
         data_hora_inicio,
         data_hora_fim,
-        titulo,
         status,
+        tipo_consulta,
         paciente_id,
-        paciente:pacientes ( nome_completo )
+        paciente:pacientes ( nome_completo ),
+        profissional_id,
+        especialidade_id,
+        paciente_nome_agenda,
+        paciente_telefone_agenda
       `,
       )
       .gte('data_hora_inicio', start)
       .lt('data_hora_inicio', end)
       .order('data_hora_inicio', { ascending: true })
 
-    if (profissionalId.value) {
-      query = query.eq('profissional_id', profissionalId.value)
+    if (estabelecimentoId.value) {
+      query = query.eq('estabelecimento_id', estabelecimentoId.value)
+    }
+
+    if (filterProfessionalId.value) {
+      query = query.eq('profissional_id', filterProfessionalId.value)
+    }
+
+    if (filterSpecialtyId.value) {
+      query = query.eq('especialidade_id', filterSpecialtyId.value)
     }
 
     const { data, error } = await query
@@ -111,10 +209,14 @@ async function loadEvents() {
           id: e.id,
           data_hora_inicio: e.data_hora_inicio,
           data_hora_fim: e.data_hora_fim,
-          titulo: e.titulo,
           status: e.status,
+          tipo_consulta: e.tipo_consulta ?? null,
           paciente_id: e.paciente_id,
           paciente_nome: e.paciente?.nome_completo ?? null,
+          profissional_id: e.profissional_id ?? null,
+          especialidade_id: e.especialidade_id ?? null,
+          paciente_nome_agenda: e.paciente_nome_agenda ?? null,
+          paciente_telefone_agenda: e.paciente_telefone_agenda ?? null,
         }),
       )
     }
@@ -134,7 +236,10 @@ async function loadContext() {
 
   const { data: profissional, error: profError } = await supabase
     .from('profissionais')
-    .select('id')
+    .select(`
+      id,
+      especialidade:especialidades ( id, nome )
+    `)
     .eq('usuario_id', auth.currentUser.id)
     .limit(1)
     .maybeSingle()
@@ -157,12 +262,77 @@ async function loadContext() {
       estabelecimentoId.value = vinculo.estabelecimento_id
     }
   }
+
+  if (estabelecimentoId.value) {
+    const { data: vinculos, error: vincsError } = await supabase
+      .from('vinculo_profissional_estabelecimento')
+      .select(`
+        profissional_id,
+        profissional:profissionais (
+          id,
+          nome_exibicao,
+          profissao:profissoes ( nome ),
+          especialidade:especialidades ( id, nome )
+        )
+      `)
+      .eq('estabelecimento_id', estabelecimentoId.value)
+      .eq('ativo', true)
+
+    if (vincsError) {
+      console.error(vincsError)
+    } else if (vinculos) {
+      const list: ProfessionalOption[] = []
+      const specialtyMap = new Map<string, string>()
+
+      vinculos.forEach((v: any) => {
+        const p = v.profissional
+        if (!p) return
+
+        // opcional: filtra só médicos (ou outra profissão), se desejar
+        // if (!p.profissao?.nome?.toLowerCase().startsWith('médico')) return
+
+        const esp = p.especialidade
+
+        list.push({
+          id: p.id,
+          nome: p.nome_exibicao ?? 'Profissional',
+          especialidadeId: esp?.id ?? null,
+          especialidadeNome: esp?.nome ?? null,
+        })
+
+        if (esp?.id && esp.nome && !specialtyMap.has(esp.id)) {
+          specialtyMap.set(esp.id, esp.nome)
+        }
+      })
+
+      professionalOptions.value = list
+      specialtyOptions.value = Array.from(specialtyMap.entries()).map(
+        ([id, nome]) => ({ id, nome }),
+      )
+
+      const defaultProf =
+        list.find((p) => p.id === profissionalId.value) ?? list[0]
+      if (defaultProf) {
+        createForm.professionalId = defaultProf.id
+      }
+    }
+  }
 }
 
 async function createEvent() {
-  if (!estabelecimentoId.value || !profissionalId.value) {
+  if (!estabelecimentoId.value) {
     feedback.error(
-      'Não foi possível identificar o profissional ou estabelecimento. Verifique seu cadastro.',
+      'Não foi possível identificar o estabelecimento. Verifique seu cadastro.',
+    )
+    return
+  }
+
+  const selectedProfessionalId =
+    createForm.professionalId || profissionalId.value
+
+  if (!selectedProfessionalId) {
+    feedback.error(
+      'Selecione o profissional responsável por este agendamento.',
     )
     return
   }
@@ -172,18 +342,87 @@ async function createEvent() {
     return
   }
 
+  if (!createForm.patientName) {
+    feedback.error('Informe o nome do paciente.')
+    return
+  }
+
   const start = new Date(`${createForm.date}T${createForm.time}:00`)
   const end = new Date(start)
-  end.setMinutes(start.getMinutes() + 30)
+  end.setMinutes(start.getMinutes() + (createForm.durationMinutes || 30))
 
-  const { error } = await supabase.from('evento_de_agendamento').insert({
+  // verifica conflitos na agenda do profissional para o dia selecionado
+  const dayStart = new Date(createForm.date + 'T00:00:00').toISOString()
+  const dayEnd = new Date(createForm.date + 'T00:00:00')
+  dayEnd.setDate(dayEnd.getDate() + 1)
+
+  const { data: conflitos, error: confError } = await supabase
+    .from('evento_de_agendamento')
+    .select('id, data_hora_inicio, data_hora_fim')
+    .eq('profissional_id', selectedProfessionalId)
+    .gte('data_hora_inicio', dayStart)
+    .lt('data_hora_inicio', dayEnd.toISOString())
+    .neq('id', editingEventId.value ?? '')
+
+  if (confError) {
+    console.error(confError)
+  }
+
+  const newStartMs = start.getTime()
+  const newEndMs = end.getTime()
+
+  let hasOverlap = false
+
+  occupiedSlots.value =
+    conflitos?.map((c: any) => {
+      const existingStart = new Date(c.data_hora_inicio)
+      const existingEnd = c.data_hora_fim
+        ? new Date(c.data_hora_fim)
+        : new Date(existingStart.getTime() + (createForm.durationMinutes || 30) * 60000)
+
+      if (!hasOverlap) {
+        const existingStartMs = existingStart.getTime()
+        const existingEndMs = existingEnd.getTime()
+        if (newStartMs < existingEndMs && newEndMs > existingStartMs) {
+          hasOverlap = true
+        }
+      }
+
+      const startStr = existingStart.toTimeString().slice(0, 5)
+      const endStr = existingEnd.toTimeString().slice(0, 5)
+      return `${startStr}-${endStr}`
+    }) ?? []
+
+  if (hasOverlap) {
+    feedback.error(
+      'Já existe um agendamento nesse intervalo de horário para este profissional.',
+    )
+    return
+  }
+
+  const payload = {
     estabelecimento_id: estabelecimentoId.value,
-    profissional_id: profissionalId.value,
+    profissional_id: selectedProfessionalId,
     data_hora_inicio: start.toISOString(),
     data_hora_fim: end.toISOString(),
-    titulo: createForm.title || null,
-    status: 'agendado',
-  })
+    tipo_consulta: createForm.tipoConsulta || null,
+    paciente_nome_agenda: createForm.patientName,
+    paciente_telefone_agenda: createForm.patientPhone || null,
+    especialidade_id: createForm.specialtyId || null,
+  }
+
+  const baseMutation = supabase.from('evento_de_agendamento')
+
+  const { error } = editingEventId.value
+    ? await baseMutation
+        .update({
+          ...payload,
+        })
+        .eq('id', editingEventId.value)
+    : await baseMutation.insert({
+        ...payload,
+        status: 'agendado',
+      })
 
   if (error) {
     console.error(error)
@@ -193,15 +432,57 @@ async function createEvent() {
 
   feedback.success('Agendamento criado com sucesso.')
   isCreating.value = false
-  createForm.title = ''
+  editingEventId.value = null
   createForm.date = selectedDate.value
   createForm.time = '09:00'
+  createForm.durationMinutes = 30
+  createForm.tipoConsulta = 'consulta'
+  createForm.patientName = ''
+  createForm.patientPhone = ''
+  createForm.specialtyId = ''
+  createForm.professionalId = profissionalId.value || ''
   await loadEvents()
+}
+
+function closeCreateModal() {
+  isCreating.value = false
+  occupiedSlots.value = []
+  editingEventId.value = null
 }
 
 function openCreateModal() {
   isCreating.value = true
+  editingEventId.value = null
   createForm.date = selectedDate.value
+  createForm.time = '09:00'
+  createForm.durationMinutes = 30
+  createForm.tipoConsulta = 'consulta'
+  createForm.patientName = ''
+  createForm.patientPhone = ''
+  createForm.specialtyId = ''
+  createForm.professionalId = profissionalId.value || ''
+}
+
+function openEditModal(event: Evento) {
+  editingEventId.value = event.id
+  isCreating.value = true
+
+  const start = new Date(event.data_hora_inicio)
+  const end = event.data_hora_fim ? new Date(event.data_hora_fim) : null
+  const duration =
+    end && end.getTime() > start.getTime()
+      ? Math.round((end.getTime() - start.getTime()) / 60000)
+      : 30
+
+  createForm.date = start.toISOString().substring(0, 10)
+  createForm.time = start.toTimeString().slice(0, 5)
+  createForm.durationMinutes = duration
+  createForm.patientName =
+    event.paciente_nome_agenda || event.paciente_nome || ''
+  createForm.patientPhone = event.paciente_telefone_agenda || ''
+  createForm.specialtyId = event.especialidade_id || ''
+  createForm.professionalId = event.profissional_id || profissionalId.value || ''
+  createForm.tipoConsulta = event.tipo_consulta || 'consulta'
 }
 
 function openPatientModal(event: Evento) {
@@ -355,49 +636,96 @@ onMounted(() => {
       <div
         class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4"
       >
-        <div class="flex items-center gap-3">
-          <div
-            class="inline-flex rounded-full bg-gray-50 p-1 text-xs font-semibold text-gray-600"
-          >
-            <button
-              class="px-3 py-1 rounded-full"
-              :class="
-                activePeriod === 'dia'
-                  ? 'bg-white text-primary-700 shadow-sm'
-                  : ''
-              "
-              type="button"
-              @click="activePeriod = 'dia'"
+        <div class="flex flex-col gap-3">
+          <div class="flex items-center gap-3">
+            <div
+              class="inline-flex rounded-full bg-gray-50 p-1 text-xs font-semibold text-gray-600"
             >
-              Dia
-            </button>
-            <button
-              class="px-3 py-1 rounded-full"
-              :class="
-                activePeriod === 'semana'
-                  ? 'bg-white text-primary-700 shadow-sm'
-                  : ''
-              "
-              type="button"
-              @click="activePeriod = 'semana'"
-            >
-              Semana
-            </button>
-            <button
-              class="px-3 py-1 rounded-full"
-              :class="
-                activePeriod === 'mes'
-                  ? 'bg-white text-primary-700 shadow-sm'
-                  : ''
-              "
-              type="button"
-              @click="activePeriod = 'mes'"
-            >
-              Mês
-            </button>
+              <button
+                class="px-3 py-1 rounded-full"
+                :class="
+                  activePeriod === 'dia'
+                    ? 'bg-white text-primary-700 shadow-sm'
+                    : ''
+                "
+                type="button"
+                @click="activePeriod = 'dia'"
+              >
+                Dia
+              </button>
+              <button
+                class="px-3 py-1 rounded-full"
+                :class="
+                  activePeriod === 'semana'
+                    ? 'bg-white text-primary-700 shadow-sm'
+                    : ''
+                "
+                type="button"
+                @click="activePeriod = 'semana'"
+              >
+                Semana
+              </button>
+              <button
+                class="px-3 py-1 rounded-full"
+                :class="
+                  activePeriod === 'mes'
+                    ? 'bg-white text-primary-700 shadow-sm'
+                    : ''
+                "
+                type="button"
+                @click="activePeriod = 'mes'"
+              >
+                Mês
+              </button>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-3 text-xs">
+            <div>
+              <label class="block text-[11px] text-gray-600 mb-0.5">
+                Filtrar por especialidade
+              </label>
+              <select
+                v-model="filterSpecialtyId"
+                class="form-input text-[11px] h-7 w-44"
+              >
+                <option value="">
+                  Todas
+                </option>
+                <option
+                  v-for="esp in specialtyOptions"
+                  :key="esp.id"
+                  :value="esp.id"
+                >
+                  {{ esp.nome }}
+                </option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] text-gray-600 mb-0.5">
+                Filtrar por profissional
+              </label>
+              <select
+                v-model="filterProfessionalId"
+                class="form-input text-[11px] h-7 w-48"
+              >
+                <option value="">
+                  Todos
+                </option>
+                <option
+                  v-for="prof in professionalOptions"
+                  :key="prof.id"
+                  :value="prof.id"
+                >
+                  {{ prof.nome }}
+                  <span v-if="prof.especialidadeNome">
+                    - {{ prof.especialidadeNome }}
+                  </span>
+                </option>
+              </select>
+            </div>
           </div>
         </div>
-        <div class="flex items-center gap-4 text-xs">
+        <div class="flex flex-col items-end gap-3 text-xs">
           <div class="flex items-center gap-2">
             <label class="text-gray-600" for="agenda-date">Referência:</label>
             <input
@@ -414,6 +742,9 @@ onMounted(() => {
               Atualizar
             </button>
           </div>
+          <p class="text-[11px] text-gray-500">
+            {{ filterSummary }}
+          </p>
           <button
             class="hidden md:inline-flex items-center rounded-lg border border-primary-600 text-primary-600 text-xs font-semibold px-3 py-1.5 hover:bg-primary-light"
             type="button"
@@ -442,15 +773,39 @@ onMounted(() => {
         >
           <div>
             <p class="font-medium text-gray-800">
-              {{ event.titulo || 'Atendimento' }}
+              {{
+                event.paciente_nome ||
+                event.paciente_nome_agenda ||
+                'Atendimento'
+              }}
             </p>
             <p class="text-xs text-gray-500">
-              {{ new Date(event.data_hora_inicio).toLocaleString() }}
+              {{
+                new Date(event.data_hora_inicio).toLocaleString()
+              }}
+              <span v-if="event.tipo_consulta" class="ml-1">
+                ·
+                {{
+                  event.tipo_consulta === 'consulta'
+                    ? 'Consulta'
+                    : event.tipo_consulta === 'retorno'
+                      ? 'Retorno'
+                      : event.tipo_consulta === 'procedimento'
+                        ? 'Procedimento'
+                        : event.tipo_consulta === 'exame'
+                          ? 'Exame'
+                          : 'Outro'
+                }}
+              </span>
             </p>
             <p class="text-xs text-gray-500">
               Paciente:
               <span class="font-medium">
-                {{ event.paciente_nome || 'Não vinculado' }}
+                {{
+                  event.paciente_nome ||
+                  event.paciente_nome_agenda ||
+                  'Não informado'
+                }}
               </span>
             </p>
           </div>
@@ -466,6 +821,13 @@ onMounted(() => {
             >
               {{ event.status }}
             </span>
+            <button
+              class="text-xs text-primary-600 underline"
+              type="button"
+              @click="openEditModal(event)"
+            >
+              Editar
+            </button>
             <button
               v-if="!event.paciente_id"
               class="text-xs text-primary-600 underline"
@@ -486,7 +848,7 @@ onMounted(() => {
     >
       <div class="w-full max-w-md bg-white rounded-2xl shadow-lg p-6">
         <h2 class="text-sm font-semibold text-primary-700 mb-4">
-          Novo agendamento
+          {{ editingEventId ? 'Editar agendamento' : 'Novo agendamento' }}
         </h2>
         <form class="space-y-4" @submit.prevent="createEvent">
           <div class="grid grid-cols-2 gap-3">
@@ -513,20 +875,127 @@ onMounted(() => {
           </div>
           <div>
             <label class="block text-xs font-semibold text-gray-700 mb-1">
-              Título (opcional)
+              Duração da consulta
+            </label>
+            <select
+              v-model.number="createForm.durationMinutes"
+              class="form-input text-xs"
+            >
+              <option :value="15">
+                15 minutos
+              </option>
+              <option :value="30">
+                30 minutos
+              </option>
+              <option :value="45">
+                45 minutos
+              </option>
+              <option :value="60">
+                60 minutos
+              </option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">
+              Tipo da consulta
+            </label>
+            <select
+              v-model="createForm.tipoConsulta"
+              class="form-input text-xs"
+            >
+              <option value="consulta">
+                Consulta
+              </option>
+              <option value="retorno">
+                Retorno
+              </option>
+              <option value="procedimento">
+                Procedimento
+              </option>
+              <option value="exame">
+                Exame
+              </option>
+              <option value="outro">
+                Outro
+              </option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">
+              Especialidade
+            </label>
+            <select
+              v-model="createForm.specialtyId"
+              class="form-input text-xs"
+            >
+              <option value="">
+                Selecione
+              </option>
+              <option
+                v-for="esp in specialtyOptions"
+                :key="esp.id"
+                :value="esp.id"
+              >
+                {{ esp.nome }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">
+              Profissional
+            </label>
+            <select
+              v-model="createForm.professionalId"
+              class="form-input text-xs"
+            >
+              <option value="">
+                Selecione
+              </option>
+              <option
+                v-for="prof in filteredProfessionalOptions"
+                :key="prof.id"
+                :value="prof.id"
+              >
+                {{ prof.nome }}
+                <span v-if="prof.especialidadeNome">
+                  - {{ prof.especialidadeNome }}
+                </span>
+              </option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">
+              Nome do paciente
             </label>
             <input
-              v-model="createForm.title"
+              v-model="createForm.patientName"
               class="form-input text-xs"
-              placeholder="Ex.: Consulta João"
+              placeholder="Nome do paciente"
               type="text"
             />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">
+              Telefone do paciente (opcional)
+            </label>
+            <input
+              v-model="createForm.patientPhone"
+              class="form-input text-xs"
+              placeholder="( ) _____-____"
+              type="text"
+            />
+          </div>
+          <div v-if="occupiedSlots.length" class="text-[11px] text-gray-500">
+            Horários já ocupados neste dia:
+            <span class="font-semibold">
+              {{ occupiedSlots.join(', ') }}
+            </span>
           </div>
           <div class="flex justify-end gap-3 mt-4">
             <button
               class="text-xs text-gray-500 underline"
               type="button"
-              @click="isCreating.value = false"
+              @click="closeCreateModal"
             >
               Cancelar
             </button>
@@ -534,7 +1003,7 @@ onMounted(() => {
               class="btn-primary max-w-[140px] text-xs py-2"
               type="submit"
             >
-              Salvar agendamento
+              {{ editingEventId ? 'Salvar alterações' : 'Salvar agendamento' }}
             </button>
           </div>
         </form>
@@ -601,7 +1070,7 @@ onMounted(() => {
             <button
               class="text-xs text-gray-500 underline"
               type="button"
-              @click="isLinkingPatient.value = false"
+              @click="isLinkingPatient = false"
             >
               Cancelar
             </button>

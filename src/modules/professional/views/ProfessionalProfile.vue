@@ -10,6 +10,11 @@ type Profissao = {
   nome: string
 }
 
+type Especialidade = {
+  id: string
+  nome: string
+}
+
 const auth = useAuthStore()
 const feedback = useFeedbackStore()
 const router = useRouter()
@@ -17,11 +22,13 @@ const router = useRouter()
 const isLoading = ref(false)
 const isSaving = ref(false)
 const profissoes = ref<Profissao[]>([])
+const especialidades = ref<Especialidade[]>([])
 const profissionalId = ref<string | null>(null)
 
 const form = reactive({
   nomeExibicao: '',
   profissaoId: '',
+  especialidadeId: '',
   registroProfissional: '',
   conselho: '',
   ufConselho: '',
@@ -47,7 +54,7 @@ async function loadData() {
       supabase
         .from('profissionais')
         .select(
-          'id, nome_exibicao, profissao_id, registro_profissional, conselho, uf_conselho',
+          'id, nome_exibicao, profissao_id, especialidade_id, registro_profissional, conselho, uf_conselho',
         )
         .eq('usuario_id', auth.currentUser.id)
         .order('created_at', { ascending: true })
@@ -61,11 +68,23 @@ async function loadData() {
       profissoes.value = profissoesResp.data as Profissao[]
     }
 
+    const { data: espData, error: espError } = await supabase
+      .from('especialidades')
+      .select('id, nome')
+      .order('nome', { ascending: true })
+
+    if (espError) {
+      console.error(espError)
+    } else if (espData) {
+      especialidades.value = espData as Especialidade[]
+    }
+
     if (profissionalResp.data) {
       const p = profissionalResp.data
       profissionalId.value = p.id
       form.nomeExibicao = p.nome_exibicao ?? ''
       form.profissaoId = p.profissao_id ?? ''
+      form.especialidadeId = p.especialidade_id ?? ''
       form.registroProfissional = p.registro_profissional ?? ''
       form.conselho = p.conselho ?? ''
       form.ufConselho = p.uf_conselho ?? ''
@@ -103,6 +122,7 @@ async function handleSave() {
       usuario_id: auth.currentUser.id as string,
       nome_exibicao: form.nomeExibicao,
       profissao_id: form.profissaoId || null,
+      especialidade_id: form.especialidadeId || null,
       registro_profissional: form.registroProfissional || null,
       conselho: form.conselho || null,
       uf_conselho: form.ufConselho || null,
@@ -187,6 +207,26 @@ onMounted(() => {
                 :value="profissao.id"
               >
                 {{ profissao.nome }}
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <div v-if="isMedico" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">
+              Especialidade médica
+            </label>
+            <select v-model="form.especialidadeId" class="form-input">
+              <option value="">
+                Selecione uma especialidade
+              </option>
+              <option
+                v-for="esp in especialidades"
+                :key="esp.id"
+                :value="esp.id"
+              >
+                {{ esp.nome }}
               </option>
             </select>
           </div>
