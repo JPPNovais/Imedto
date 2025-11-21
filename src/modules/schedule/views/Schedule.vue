@@ -53,7 +53,8 @@ const eventToLink = ref<Evento | null>(null)
 const patientForm = reactive({
   documento: '',
   nome: '',
-  telefone: '',
+  celular: '',
+  telefoneFixo: '',
   dataNascimento: '',
   sexo: '',
   cep: '',
@@ -506,16 +507,17 @@ function openPatientModal(event: Evento) {
   isLinkingPatient.value = true
   patientForm.documento = ''
   patientForm.nome = ''
-  patientForm.telefone = ''
-   patientForm.dataNascimento = ''
-   patientForm.sexo = ''
-   patientForm.cep = ''
-   patientForm.logradouro = ''
-   patientForm.numero = ''
-   patientForm.complemento = ''
-   patientForm.bairro = ''
-   patientForm.cidade = ''
-   patientForm.estado = ''
+  patientForm.celular = ''
+  patientForm.telefoneFixo = ''
+  patientForm.dataNascimento = ''
+  patientForm.sexo = ''
+  patientForm.cep = ''
+  patientForm.logradouro = ''
+  patientForm.numero = ''
+  patientForm.complemento = ''
+  patientForm.bairro = ''
+  patientForm.cidade = ''
+  patientForm.estado = ''
   foundPatientId.value = null
 }
 
@@ -536,7 +538,7 @@ async function searchPatient() {
     const { data, error } = await supabase
       .from('pacientes')
       .select(
-        'id, nome_completo, cpf_cnpj, telefone, data_nascimento, sexo, cep, logradouro, numero, complemento, bairro, cidade, estado',
+        'id, nome_completo, cpf_cnpj, telefone, telefone_celular, telefone_fixo, data_nascimento, sexo, cep, logradouro, numero, complemento, bairro, cidade, estado',
       )
       .eq('cpf_cnpj', doc)
       .eq('estabelecimento_id', estabelecimentoId.value)
@@ -551,7 +553,10 @@ async function searchPatient() {
     if (data) {
       foundPatientId.value = data.id
       patientForm.nome = data.nome_completo ?? ''
-      patientForm.telefone = data.telefone ?? ''
+      patientForm.celular = data.telefone_celular
+        ? data.telefone_celular
+        : data.telefone ?? ''
+      patientForm.telefoneFixo = data.telefone_fixo ?? ''
       patientForm.dataNascimento = data.data_nascimento ?? ''
       patientForm.sexo = data.sexo ?? ''
       patientForm.cep = data.cep ?? ''
@@ -590,12 +595,15 @@ async function savePatientLink() {
   let pacienteId = foundPatientId.value
 
   if (!pacienteId) {
+    const celular = patientForm.celular || ''
+    const fixo = patientForm.telefoneFixo || ''
+
     const { data: novoId, error: pacError } = await supabase.rpc(
       'criar_paciente_e_vincular',
       {
         p_nome_completo: patientForm.nome,
         p_cpf_cnpj: docDigits || null,
-        p_telefone: patientForm.telefone || null,
+        p_telefone: celular || fixo || null,
         p_data_nascimento: patientForm.dataNascimento || null,
         p_sexo: patientForm.sexo || 'nao_informado',
         p_cep: patientForm.cep || null,
@@ -630,6 +638,22 @@ async function savePatientLink() {
 
   feedback.success('Paciente vinculado ao agendamento com sucesso.')
   isLinkingPatient.value = false
+  await loadEvents()
+}
+
+async function confirmEvent(event: Evento) {
+  const { error } = await supabase
+    .from('evento_de_agendamento')
+    .update({ status: 'confirmado' })
+    .eq('id', event.id)
+
+  if (error) {
+    console.error(error)
+    feedback.error('Não foi possível confirmar o agendamento.')
+    return
+  }
+
+  feedback.success('Agendamento confirmado com sucesso.')
   await loadEvents()
 }
 
@@ -868,8 +892,24 @@ onMounted(() => {
                 event.status === 'concluido' && 'bg-primary-100 text-primary-700',
               ]"
             >
-              {{ event.status }}
+              {{
+                event.status === 'agendado'
+                  ? 'Agendado'
+                  : event.status === 'confirmado'
+                    ? 'Confirmado'
+                    : event.status === 'cancelado'
+                      ? 'Cancelado'
+                      : 'Concluído'
+              }}
             </span>
+            <button
+              v-if="event.status === 'agendado'"
+              class="text-xs text-primary-600 underline"
+              type="button"
+              @click="confirmEvent(event)"
+            >
+              Confirmar
+            </button>
             <button
               class="text-xs text-primary-600 underline"
               type="button"
@@ -878,7 +918,7 @@ onMounted(() => {
               Editar
             </button>
             <button
-              v-if="!event.paciente_id"
+              v-if="event.status === 'confirmado' && !event.paciente_id"
               class="text-xs text-primary-600 underline"
               type="button"
               @click="openPatientModal(event)"
@@ -1110,15 +1150,30 @@ onMounted(() => {
           </div>
           <div>
             <label class="block text-xs font-semibold text-gray-700 mb-1">
-              Telefone (opcional)
+              Celular (opcional)
             </label>
             <input
-              v-model="patientForm.telefone"
+              v-model="patientForm.celular"
               class="form-input text-xs"
               placeholder="( ) _____-____"
               type="text"
               maxlength="15"
-              @input="patientForm.telefone = formatPhone(patientForm.telefone)"
+              @input="patientForm.celular = formatPhone(patientForm.celular)"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">
+              Telefone fixo (opcional)
+            </label>
+            <input
+              v-model="patientForm.telefoneFixo"
+              class="form-input text-xs"
+              placeholder="( ) ____-____"
+              type="text"
+              maxlength="14"
+              @input="
+                patientForm.telefoneFixo = formatPhone(patientForm.telefoneFixo)
+              "
             />
           </div>
           <div class="grid grid-cols-2 gap-3">

@@ -506,6 +506,54 @@ onMounted(() => {
             </div>
             <div class="col-span-2">
               <label class="block text-xs font-semibold text-gray-700 mb-1">
+                Logradouro
+              </label>
+              <input
+                v-model="editForm.logradouro"
+                class="form-input text-xs"
+                placeholder="Rua, avenida..."
+                type="text"
+              />
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-gray-700 mb-1">
+                Número
+              </label>
+              <input
+                v-model="editForm.numero"
+                class="form-input text-xs"
+                placeholder="Número"
+                type="text"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-700 mb-1">
+                Complemento
+              </label>
+              <input
+                v-model="editForm.complemento"
+                class="form-input text-xs"
+                placeholder="Compl."
+                type="text"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-700 mb-1">
+                Bairro
+              </label>
+              <input
+                v-model="editForm.bairro"
+                class="form-input text-xs"
+                placeholder="Bairro"
+                type="text"
+              />
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <div class="col-span-2">
+              <label class="block text-xs font-semibold text-gray-700 mb-1">
                 Cidade
               </label>
               <input
