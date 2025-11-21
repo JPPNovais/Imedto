@@ -3,7 +3,8 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedbackStore } from '@/stores/feedback'
-import { onlyDigits } from '@/utils/masks'
+import { onlyDigits, formatPhone, formatCep, formatCpfCnpj } from '@/utils/masks'
+import { fetchAddressByCep } from '@/utils/viaCep'
 
 type Evento = {
   id: string
@@ -53,6 +54,15 @@ const patientForm = reactive({
   documento: '',
   nome: '',
   telefone: '',
+  dataNascimento: '',
+  sexo: '',
+  cep: '',
+  logradouro: '',
+  numero: '',
+  complemento: '',
+  bairro: '',
+  cidade: '',
+  estado: '',
 })
 const foundPatientId = ref<string | null>(null)
 const isSearchingPatient = ref(false)
@@ -356,13 +366,19 @@ async function createEvent() {
   const dayEnd = new Date(createForm.date + 'T00:00:00')
   dayEnd.setDate(dayEnd.getDate() + 1)
 
-  const { data: conflitos, error: confError } = await supabase
+  let conflitosQuery = supabase
     .from('evento_de_agendamento')
     .select('id, data_hora_inicio, data_hora_fim')
     .eq('profissional_id', selectedProfessionalId)
     .gte('data_hora_inicio', dayStart)
     .lt('data_hora_inicio', dayEnd.toISOString())
-    .neq('id', editingEventId.value ?? '')
+
+  // quando estiver editando, ignora o próprio evento no cálculo de conflito
+  if (editingEventId.value) {
+    conflitosQuery = conflitosQuery.neq('id', editingEventId.value)
+  }
+
+  const { data: conflitos, error: confError } = await conflitosQuery
 
   if (confError) {
     console.error(confError)
@@ -491,6 +507,15 @@ function openPatientModal(event: Evento) {
   patientForm.documento = ''
   patientForm.nome = ''
   patientForm.telefone = ''
+   patientForm.dataNascimento = ''
+   patientForm.sexo = ''
+   patientForm.cep = ''
+   patientForm.logradouro = ''
+   patientForm.numero = ''
+   patientForm.complemento = ''
+   patientForm.bairro = ''
+   patientForm.cidade = ''
+   patientForm.estado = ''
   foundPatientId.value = null
 }
 
@@ -510,8 +535,11 @@ async function searchPatient() {
   try {
     const { data, error } = await supabase
       .from('pacientes')
-      .select('id, nome_completo, cpf_cnpj, telefone')
+      .select(
+        'id, nome_completo, cpf_cnpj, telefone, data_nascimento, sexo, cep, logradouro, numero, complemento, bairro, cidade, estado',
+      )
       .eq('cpf_cnpj', doc)
+      .eq('estabelecimento_id', estabelecimentoId.value)
       .maybeSingle()
 
     if (error) {
@@ -524,6 +552,15 @@ async function searchPatient() {
       foundPatientId.value = data.id
       patientForm.nome = data.nome_completo ?? ''
       patientForm.telefone = data.telefone ?? ''
+      patientForm.dataNascimento = data.data_nascimento ?? ''
+      patientForm.sexo = data.sexo ?? ''
+      patientForm.cep = data.cep ?? ''
+      patientForm.logradouro = data.logradouro ?? ''
+      patientForm.numero = data.numero ?? ''
+      patientForm.complemento = data.complemento ?? ''
+      patientForm.bairro = data.bairro ?? ''
+      patientForm.cidade = data.cidade ?? ''
+      patientForm.estado = data.estado ?? ''
     } else {
       foundPatientId.value = null
       feedback.info(
@@ -553,38 +590,31 @@ async function savePatientLink() {
   let pacienteId = foundPatientId.value
 
   if (!pacienteId) {
-    const { data: novo, error: pacError } = await supabase
-      .from('pacientes')
-      .insert({
-        nome_completo: patientForm.nome,
-        cpf_cnpj: docDigits || null,
-        telefone: patientForm.telefone || null,
-      })
-      .select('id')
-      .single()
+    const { data: novoId, error: pacError } = await supabase.rpc(
+      'criar_paciente_e_vincular',
+      {
+        p_nome_completo: patientForm.nome,
+        p_cpf_cnpj: docDigits || null,
+        p_telefone: patientForm.telefone || null,
+        p_data_nascimento: patientForm.dataNascimento || null,
+        p_sexo: patientForm.sexo || 'nao_informado',
+        p_cep: patientForm.cep || null,
+        p_logradouro: patientForm.logradouro || null,
+        p_numero: patientForm.numero || null,
+        p_complemento: patientForm.complemento || null,
+        p_bairro: patientForm.bairro || null,
+        p_cidade: patientForm.cidade || null,
+        p_estado: patientForm.estado || null,
+        p_estabelecimento_id: estabelecimentoId.value,
+      },
+    )
 
-    if (pacError || !novo) {
+    if (pacError || !novoId) {
       console.error(pacError)
       feedback.error('Não foi possível criar o paciente.')
       return
     }
-    pacienteId = novo.id
-  }
-
-  const { error: vincError } = await supabase
-    .from('paciente_estabelecimento')
-    .upsert(
-      {
-        paciente_id: pacienteId,
-        estabelecimento_id: estabelecimentoId.value,
-      },
-      { onConflict: 'paciente_id,estabelecimento_id' },
-    )
-
-  if (vincError) {
-    console.error(vincError)
-    feedback.error('Não foi possível vincular o paciente ao estabelecimento.')
-    return
+    pacienteId = novoId as string
   }
 
   const { error: evError } = await supabase
@@ -601,6 +631,25 @@ async function savePatientLink() {
   feedback.success('Paciente vinculado ao agendamento com sucesso.')
   isLinkingPatient.value = false
   await loadEvents()
+}
+
+async function onCepBlur() {
+  if (!patientForm.cep) return
+  try {
+    const address = await fetchAddressByCep(patientForm.cep)
+    if (!address) return
+
+    patientForm.cep = address.cep
+    if (!patientForm.logradouro) patientForm.logradouro = address.logradouro
+    if (!patientForm.bairro) patientForm.bairro = address.bairro
+    if (!patientForm.cidade) patientForm.cidade = address.localidade
+    if (!patientForm.estado) patientForm.estado = address.uf
+    if (!patientForm.complemento && address.complemento) {
+      patientForm.complemento = address.complemento
+    }
+  } catch (e) {
+    console.error(e)
+  }
 }
 
 watch([activePeriod, selectedDate], () => {
@@ -983,6 +1032,8 @@ onMounted(() => {
               class="form-input text-xs"
               placeholder="( ) _____-____"
               type="text"
+              maxlength="15"
+              @input="createForm.patientPhone = formatPhone(createForm.patientPhone)"
             />
           </div>
           <div v-if="occupiedSlots.length" class="text-[11px] text-gray-500">
@@ -1015,7 +1066,7 @@ onMounted(() => {
       v-if="isLinkingPatient"
       class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
     >
-      <div class="w-full max-w-md bg-white rounded-2xl shadow-lg p-6">
+      <div class="w-full max-w-2xl bg-white rounded-2xl shadow-lg p-6">
         <h2 class="text-sm font-semibold text-primary-700 mb-2">
           Vincular paciente ao agendamento
         </h2>
@@ -1034,6 +1085,8 @@ onMounted(() => {
                 class="form-input text-xs"
                 placeholder="Digite o CPF ou documento"
                 type="text"
+                maxlength="18"
+                @input="patientForm.documento = formatCpfCnpj(patientForm.documento)"
               />
             </div>
             <button
@@ -1064,7 +1117,113 @@ onMounted(() => {
               class="form-input text-xs"
               placeholder="( ) _____-____"
               type="text"
+              maxlength="15"
+              @input="patientForm.telefone = formatPhone(patientForm.telefone)"
             />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-gray-700 mb-1">
+                Data de nascimento
+              </label>
+              <input
+                v-model="patientForm.dataNascimento"
+                class="form-input text-xs"
+                type="date"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-700 mb-1">
+                Sexo
+              </label>
+              <select
+                v-model="patientForm.sexo"
+                class="form-input text-xs"
+              >
+                <option value="">
+                  Não informado
+                </option>
+                <option value="masculino">
+                  Masculino
+                </option>
+                <option value="feminino">
+                  Feminino
+                </option>
+                <option value="outro">
+                  Outro
+                </option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">
+              CEP
+            </label>
+            <input
+              v-model="patientForm.cep"
+              class="form-input text-xs"
+              placeholder="_____‑___"
+              type="text"
+              maxlength="9"
+              @input="patientForm.cep = formatCep(patientForm.cep)"
+              @blur="onCepBlur"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">
+              Endereço
+            </label>
+            <input
+              v-model="patientForm.logradouro"
+              class="form-input text-xs mb-2"
+              placeholder="Rua, avenida..."
+              type="text"
+            />
+            <div class="grid grid-cols-3 gap-3">
+              <input
+                v-model="patientForm.numero"
+                class="form-input text-xs"
+                placeholder="Número"
+                type="text"
+              />
+              <input
+                v-model="patientForm.complemento"
+                class="form-input text-xs"
+                placeholder="Compl."
+                type="text"
+              />
+              <input
+                v-model="patientForm.bairro"
+                class="form-input text-xs"
+                placeholder="Bairro"
+                type="text"
+              />
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <div class="col-span-2">
+              <label class="block text-xs font-semibold text-gray-700 mb-1">
+                Cidade
+              </label>
+              <input
+                v-model="patientForm.cidade"
+                class="form-input text-xs"
+                placeholder="Cidade"
+                type="text"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-700 mb-1">
+                UF
+              </label>
+              <input
+                v-model="patientForm.estado"
+                class="form-input text-xs"
+                placeholder="UF"
+                maxlength="2"
+                type="text"
+              />
+            </div>
           </div>
           <div class="flex justify-end gap-3 mt-4">
             <button

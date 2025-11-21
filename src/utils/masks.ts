@@ -71,3 +71,52 @@ export function formatPhone(value: string): string {
   return `(${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`
 }
 
+export function isValidCpf(cpf: string): boolean {
+  const digits = onlyDigits(cpf)
+  if (digits.length !== 11) return false
+  if (/^(\d)\1{10}$/.test(digits)) return false
+
+  const calcCheck = (base: string, factor: number) => {
+    let total = 0
+    for (let i = 0; i < base.length; i += 1) {
+      total += parseInt(base[i], 10) * (factor - i)
+    }
+    const rest = (total * 10) % 11
+    return rest === 10 ? 0 : rest
+  }
+
+  const d1 = calcCheck(digits.slice(0, 9), 10)
+  const d2 = calcCheck(digits.slice(0, 10), 11)
+
+  return d1 === parseInt(digits[9], 10) && d2 === parseInt(digits[10], 10)
+}
+
+export function isValidCnpj(cnpj: string): boolean {
+  const digits = onlyDigits(cnpj)
+  if (digits.length !== 14) return false
+  if (/^(\d)\1{13}$/.test(digits)) return false
+
+  const calcCheck = (base: string, factors: number[]) => {
+    let total = 0
+    for (let i = 0; i < base.length; i += 1) {
+      total += parseInt(base[i], 10) * factors[i]
+    }
+    const rest = total % 11
+    return rest < 2 ? 0 : 11 - rest
+  }
+
+  const base12 = digits.slice(0, 12)
+  const base13 = digits.slice(0, 13)
+
+  const d1 = calcCheck(base12, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2])
+  const d2 = calcCheck(base13, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2])
+
+  return d1 === parseInt(digits[12], 10) && d2 === parseInt(digits[13], 10)
+}
+
+export function isValidCpfCnpj(value: string): boolean {
+  const digits = onlyDigits(value)
+  if (digits.length === 11) return isValidCpf(digits)
+  if (digits.length === 14) return isValidCnpj(digits)
+  return false
+}

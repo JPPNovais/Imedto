@@ -152,7 +152,7 @@ import { reactive, ref } from 'vue'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import router from '@/router'
-import { formatCpfCnpj } from '@/utils/masks'
+import { formatCpfCnpj, isValidCpfCnpj } from '@/utils/masks'
 
 const auth = useAuthStore()
 
@@ -176,6 +176,11 @@ async function handleSubmit() {
 
   if (!form.nomeCompleto || !form.cpfCnpj) {
     errorMessage.value = 'Preencha nome e CPF/CNPJ.'
+    return
+  }
+
+  if (!isValidCpfCnpj(form.cpfCnpj)) {
+    errorMessage.value = 'Informe um CPF ou CNPJ válido.'
     return
   }
 

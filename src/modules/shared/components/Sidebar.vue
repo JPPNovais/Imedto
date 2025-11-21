@@ -55,6 +55,14 @@
           <RouterLink
             class="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-white/10"
             active-class="bg-white/15"
+            to="/pacientes"
+          >
+            <span class="w-5 text-center">🧑‍🤝‍🧑</span>
+            <span>Pacientes</span>
+          </RouterLink>
+          <RouterLink
+            class="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-white/10"
+            active-class="bg-white/15"
             to="/perfil-profissional"
           >
             <span class="w-5 text-center">👤</span>

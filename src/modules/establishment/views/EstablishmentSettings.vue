@@ -4,7 +4,8 @@ import { useRouter } from 'vue-router'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedbackStore } from '@/stores/feedback'
-import { formatCpfCnpj, onlyDigits } from '@/utils/masks'
+import { formatCpfCnpj, onlyDigits, isValidCnpj, formatCep } from '@/utils/masks'
+import { fetchAddressByCep } from '@/utils/viaCep'
 
 type TipoSala = {
   id: string
@@ -32,6 +33,13 @@ const salas = ref<Sala[]>([])
 const formEstab = reactive({
   nomeFantasia: '',
   cpfCnpj: '',
+  cep: '',
+  logradouro: '',
+  numero: '',
+  complemento: '',
+  bairro: '',
+  cidade: '',
+  estado: '',
 })
 
 const novaSala = reactive({
@@ -50,7 +58,7 @@ async function loadData() {
     const [estabResp, tiposSalaResp] = await Promise.all([
       supabase
         .from('estabelecimentos')
-        .select('id, nome_fantasia, cpf_cnpj')
+        .select('id, nome_fantasia, cpf_cnpj, cep, logradouro, numero, complemento, bairro, cidade, estado')
         .eq('owner_usuario_id', auth.currentUser.id)
         .order('created_at', { ascending: true })
         .limit(1)
@@ -66,6 +74,13 @@ async function loadData() {
       estabelecimentoId.value = e.id
       formEstab.nomeFantasia = e.nome_fantasia ?? ''
       formEstab.cpfCnpj = e.cpf_cnpj ?? ''
+      formEstab.cep = e.cep ?? ''
+      formEstab.logradouro = e.logradouro ?? ''
+      formEstab.numero = e.numero ?? ''
+      formEstab.complemento = e.complemento ?? ''
+      formEstab.bairro = e.bairro ?? ''
+      formEstab.cidade = e.cidade ?? ''
+      formEstab.estado = e.estado ?? ''
     }
 
     if (tiposSalaResp.data) {
@@ -105,6 +120,10 @@ async function saveEstabelecimento() {
   if (digits.length === 0) {
     cpfCnpjToSave = null
   } else if (digits.length === 14) {
+    if (!isValidCnpj(digits)) {
+      feedback.error('CNPJ inválido. Verifique os números informados.')
+      return
+    }
     cpfCnpjToSave = formatCpfCnpj(digits)
   } else if (digits.length === 11) {
     feedback.error('Use apenas CNPJ (14 dígitos) ou deixe em branco.')
@@ -122,6 +141,13 @@ async function saveEstabelecimento() {
       cpf_cnpj: cpfCnpjToSave,
       owner_usuario_id: auth.currentUser.id as string,
       tipo_pessoa: 'PJ',
+      cep: formEstab.cep || null,
+      logradouro: formEstab.logradouro || null,
+      numero: formEstab.numero || null,
+      complemento: formEstab.complemento || null,
+      bairro: formEstab.bairro || null,
+      cidade: formEstab.cidade || null,
+      estado: formEstab.estado || null,
     }
 
     let error = null
@@ -196,6 +222,25 @@ async function addSala() {
   }
 }
 
+async function onCepBlurEstab() {
+  if (!formEstab.cep) return
+  try {
+    const address = await fetchAddressByCep(formEstab.cep)
+    if (!address) return
+
+    formEstab.cep = address.cep
+    if (!formEstab.logradouro) formEstab.logradouro = address.logradouro
+    if (!formEstab.bairro) formEstab.bairro = address.bairro
+    if (!formEstab.cidade) formEstab.cidade = address.localidade
+    if (!formEstab.estado) formEstab.estado = address.uf
+    if (!formEstab.complemento && address.complemento) {
+      formEstab.complemento = address.complemento
+    }
+  } catch (e) {
+    console.error(e)
+  }
+}
+
 onMounted(() => {
   loadData()
 })
@@ -243,6 +288,89 @@ onMounted(() => {
                 placeholder="Digite o CPF ou CNPJ"
                 class="form-input"
                 @input="formEstab.cpfCnpj = formatCpfCnpj(formEstab.cpfCnpj)"
+              />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">
+                CEP
+              </label>
+              <input
+                v-model="formEstab.cep"
+                type="text"
+                maxlength="9"
+                placeholder="_____‑___"
+                class="form-input"
+                @input="formEstab.cep = formatCep(formEstab.cep)"
+                @blur="onCepBlurEstab"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">
+                Endereço
+              </label>
+              <input
+                v-model="formEstab.logradouro"
+                type="text"
+                placeholder="Rua, avenida..."
+                class="form-input"
+              />
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">
+                Número
+              </label>
+              <input
+                v-model="formEstab.numero"
+                type="text"
+                class="form-input"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">
+                Complemento
+              </label>
+              <input
+                v-model="formEstab.complemento"
+                type="text"
+                class="form-input"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">
+                Bairro
+              </label>
+              <input
+                v-model="formEstab.bairro"
+                type="text"
+                class="form-input"
+              />
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="md:col-span-2">
+              <label class="block text-sm font-semibold text-gray-700 mb-1">
+                Cidade
+              </label>
+              <input
+                v-model="formEstab.cidade"
+                type="text"
+                class="form-input"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">
+                UF
+              </label>
+              <input
+                v-model="formEstab.estado"
+                type="text"
+                maxlength="2"
+                class="form-input"
               />
             </div>
           </div>

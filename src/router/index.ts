@@ -18,6 +18,7 @@ import ProfessionalProfile from '@/modules/professional/views/ProfessionalProfil
 import EstablishmentSettings from '@/modules/establishment/views/EstablishmentSettings.vue'
 import ProfessionalsManagement from '@/modules/professionals/views/ProfessionalsManagement.vue'
 import PermissionsManagement from '@/modules/permissions/views/PermissionsManagement.vue'
+import PatientsList from '@/modules/patients/views/PatientsList.vue'
 
 const ifNotAuthenticated = (
   to: RouteLocationNormalized | undefined,
@@ -94,6 +95,11 @@ const router = createRouter({
           path: 'perfil-profissional',
           name: 'professional-profile',
           component: ProfessionalProfile,
+        },
+        {
+          path: 'pacientes',
+          name: 'patients-list',
+          component: PatientsList,
         },
         {
           path: 'estabelecimento',
