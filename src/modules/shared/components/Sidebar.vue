@@ -104,26 +104,17 @@
 
             <div v-if="isProfessionalsOpen" class="mt-1 space-y-1">
               <RouterLink
-                class="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-white/10"
+                class="flex items-center rounded-lg pl-9 pr-3 py-1.5 hover:bg-white/10 text-[13px]"
                 active-class="bg-white/15"
                 to="/profissionais"
               >
-                <span class="w-5 text-center">
-                  <i
-                    class="fa-solid fa-user-gear text-white"
-                    aria-hidden="true"
-                  ></i>
-                </span>
                 <span>Gestão de profissionais</span>
               </RouterLink>
               <RouterLink
-                class="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-white/10"
+                class="flex items-center rounded-lg pl-9 pr-3 py-1.5 hover:bg-white/10 text-[13px]"
                 active-class="bg-white/15"
                 to="/permissoes"
               >
-                <span class="w-5 text-center">
-                  <i class="fa-solid fa-key text-white" aria-hidden="true"></i>
-                </span>
                 <span>Permissões</span>
               </RouterLink>
             </div>
@@ -165,19 +156,28 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { onMounted, ref, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
 const canSeeMenus = ref(false)
 const isOwnerEstabelecimento = ref(false)
-const isProfessionalsOpen = ref(true)
+const isProfessionalsOpen = ref(false)
 const userName = ref('')
 const userRole = ref('Profissional')
 const userClinic = ref<string | null>(null)
 const userInitial = ref('P')
+
+const route = useRoute()
+
+function updateSubmenuStateByRoute() {
+  const currentPath = route.path
+  isProfessionalsOpen.value =
+    currentPath.startsWith('/profissionais') ||
+    currentPath.startsWith('/permissoes')
+}
 
 onMounted(async () => {
   if (!auth.currentUser?.id) return
@@ -252,5 +252,14 @@ onMounted(async () => {
   } else if (!isOwnerEstabelecimento.value) {
     canSeeMenus.value = false
   }
+
+  updateSubmenuStateByRoute()
 })
+
+watch(
+  () => route.path,
+  () => {
+    updateSubmenuStateByRoute()
+  },
+)
 </script>

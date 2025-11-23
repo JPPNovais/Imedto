@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedbackStore } from '@/stores/feedback'
@@ -42,6 +42,7 @@ const profissionais = ref<ProfissionalVinculado[]>([])
 const solicitacoes = ref<Solicitacao[]>([])
 const profissoes = ref<Profissao[]>([])
 const especialidades = ref<Especialidade[]>([])
+const statusFilter = ref<'ativos' | 'inativos' | 'todos'>('ativos')
 
 const inviteForm = reactive({
   email: '',
@@ -50,6 +51,14 @@ const inviteForm = reactive({
 })
 
 const activeTab = ref<'vinculados' | 'solicitacoes'>('vinculados')
+
+const filteredProfissionais = computed(() => {
+  if (statusFilter.value === 'todos') {
+    return profissionais.value
+  }
+  const shouldBeActive = statusFilter.value === 'ativos'
+  return profissionais.value.filter((p) => !!p.ativo === shouldBeActive)
+})
 
 async function loadEstabelecimento() {
   if (!auth.currentUser?.id) return
@@ -187,14 +196,34 @@ async function sendInvite() {
     return
   }
 
+  const targetEmail = inviteForm.email.toLowerCase().trim()
+
   isSendingInvite.value = true
 
   try {
+    // Verifica se já existe vínculo ativo para este e-mail
+    const { data: alreadyLinked, error: checkError } = await supabase.rpc(
+      'is_professional_linked_to_establishment',
+      {
+        p_email: targetEmail,
+        p_estabelecimento_id: estabelecimentoId.value,
+      },
+    )
+
+    if (checkError) {
+      console.error(checkError)
+    } else if (alreadyLinked) {
+      feedback.error(
+        'Este profissional já está vinculado e ativo neste estabelecimento.',
+      )
+      return
+    }
+
     const { error } = await supabase
       .from('solicitacao_vinculo_profissional_estabelecimento')
       .insert({
         estabelecimento_id: estabelecimentoId.value,
-        email_profissional: inviteForm.email.toLowerCase(),
+        email_profissional: targetEmail,
         profissao_id: inviteForm.profissaoId || null,
         especialidade_id: inviteForm.especialidadeId || null,
         status: 'pendente',
@@ -477,14 +506,38 @@ onMounted(async () => {
 
         <div class="p-6 space-y-6">
           <div v-if="activeTab === 'vinculados'">
-            <h2 class="text-sm font-semibold text-primary-700 mb-4">
-              Profissionais vinculados
-            </h2>
+            <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <h2 class="text-sm font-semibold text-primary-700">
+                Profissionais vinculados
+              </h2>
+              <div class="flex items-center gap-2 text-xs">
+                <span class="text-gray-600">
+                  Status:
+                </span>
+                <select
+                  v-model="statusFilter"
+                  class="form-input text-[11px] h-7 w-40"
+                >
+                  <option value="ativos">
+                    Ativos
+                  </option>
+                  <option value="inativos">
+                    Inativos
+                  </option>
+                  <option value="todos">
+                    Todos
+                  </option>
+                </select>
+              </div>
+            </div>
             <div v-if="isLoading" class="text-xs text-gray-400">
               Carregando profissionais...
             </div>
-            <div v-else-if="!profissionais.length" class="text-sm text-gray-500">
-              Nenhum profissional vinculado ainda.
+            <div
+              v-else-if="!filteredProfissionais.length"
+              class="text-sm text-gray-500"
+            >
+              Nenhum profissional encontrado para o filtro selecionado.
             </div>
             <table
               v-else
@@ -502,7 +555,7 @@ onMounted(async () => {
               </thead>
               <tbody>
                 <tr
-                  v-for="prof in profissionais"
+                  v-for="prof in filteredProfissionais"
                   :key="prof.id"
                   class="border-b border-gray-50"
                 >
