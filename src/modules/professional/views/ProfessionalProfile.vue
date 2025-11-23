@@ -178,7 +178,7 @@ onMounted(() => {
       </div>
     </header>
 
-    <div class="max-w-3xl bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+    <div class="w-full bg-white rounded-xl shadow-sm border border-gray-100 p-6">
       <form class="space-y-5" @submit.prevent="handleSave">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>

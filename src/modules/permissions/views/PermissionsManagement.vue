@@ -241,7 +241,7 @@ onMounted(async () => {
       </p>
     </div>
 
-    <div v-else class="space-y-6 max-w-5xl">
+    <div v-else class="space-y-6 w-full">
       <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <h2 class="text-sm font-semibold text-primary-700 mb-3">
           Modelos de permissão
@@ -372,4 +372,3 @@ onMounted(async () => {
     </div>
   </section>
 </template>
-

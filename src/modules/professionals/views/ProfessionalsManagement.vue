@@ -7,6 +7,7 @@ import { useFeedbackStore } from '@/stores/feedback'
 type ProfissionalVinculado = {
   id: string
   is_admin: boolean
+  ativo: boolean
   profissional_nome: string
   profissao_nome: string | null
   email: string | null
@@ -84,6 +85,7 @@ async function loadProfissionais() {
       .select(
         `
         id,
+        ativo,
         is_admin,
         salario_base,
         valor_dia,
@@ -107,6 +109,7 @@ async function loadProfissionais() {
       data?.map((item: any) => ({
         id: item.id,
         is_admin: item.is_admin,
+        ativo: item.ativo ?? true,
         profissional_nome: item.profissional?.nome_exibicao ?? 'Profissional',
         profissao_nome: item.profissional?.profissao?.nome ?? null,
         email: null,
@@ -265,21 +268,6 @@ async function resendSolicitacao(s: Solicitacao) {
 
   isSendingInvite.value = true
   try {
-    const { error } =
-      await supabase
-        .from('solicitacao_vinculo_profissional_estabelecimento')
-        .insert({
-          estabelecimento_id: estabelecimentoId.value,
-          email_profissional: s.email_profissional.toLowerCase(),
-          status: 'pendente',
-        })
-
-    if (error) {
-      console.error(error)
-      feedback.error('Não foi possível reenviar o convite.')
-      return
-    }
-
     try {
       await supabase.functions.invoke('send-professional-invite', {
         body: {
@@ -293,7 +281,6 @@ async function resendSolicitacao(s: Solicitacao) {
     }
 
     feedback.success('Convite reenviado com sucesso.')
-    await loadSolicitacoes()
   } finally {
     isSendingInvite.value = false
   }
@@ -319,6 +306,30 @@ async function updateVinculoValores(
   }
 
   feedback.success('Valores do profissional atualizados com sucesso.')
+}
+
+async function setVinculoAtivo(vinculoId: string, ativo: boolean) {
+  const { error } = await supabase
+    .from('vinculo_profissional_estabelecimento')
+    .update({ ativo })
+    .eq('id', vinculoId)
+
+  if (error) {
+    console.error(error)
+    feedback.error(
+      ativo
+        ? 'Não foi possível reativar o profissional.'
+        : 'Não foi possível desativar o profissional.',
+    )
+    return
+  }
+
+  feedback.success(
+    ativo
+      ? 'Profissional reativado com sucesso.'
+      : 'Profissional desativado com sucesso.',
+  )
+  await loadProfissionais()
 }
 
 onMounted(async () => {
@@ -348,7 +359,7 @@ onMounted(async () => {
       </p>
     </div>
 
-    <div v-else class="space-y-6 max-w-5xl">
+    <div v-else class="space-y-6 w-full">
       <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
         <div class="flex items-center gap-4">
           <div
@@ -373,6 +384,73 @@ onMounted(async () => {
             </p>
           </div>
         </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <h2 class="text-sm font-semibold text-primary-700 mb-4">
+          Enviar convite para profissional
+        </h2>
+        <form
+          class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end"
+          @submit.prevent="sendInvite"
+        >
+          <div class="md:col-span-1">
+            <label class="block text-sm font-semibold text-gray-700 mb-1">
+              E-mail do profissional
+            </label>
+            <input
+              v-model="inviteForm.email"
+              type="email"
+              placeholder="profissional@exemplo.com"
+              class="form-input"
+            />
+          </div>
+          <div class="md:col-span-1">
+            <label class="block text-sm font-semibold text-gray-700 mb-1">
+              Profissão (opcional)
+            </label>
+            <select v-model="inviteForm.profissaoId" class="form-input">
+              <option value="">
+                Selecione
+              </option>
+              <option
+                v-for="p in profissoes"
+                :key="p.id"
+                :value="p.id"
+              >
+                {{ p.nome }}
+              </option>
+            </select>
+          </div>
+          <div class="md:col-span-1">
+            <label class="block text-sm font-semibold text-gray-700 mb-1">
+              Especialidade (opcional)
+            </label>
+            <select v-model="inviteForm.especialidadeId" class="form-input">
+              <option value="">
+                Selecione
+              </option>
+              <option
+                v-for="e in especialidades"
+                :key="e.id"
+                :value="e.id"
+              >
+                {{ e.nome }}
+              </option>
+            </select>
+          </div>
+          <div class="md:col-span-3 flex justify-end mt-2">
+            <button
+              type="submit"
+              class="btn-primary max-w-xs h-14 disabled:opacity-60 disabled:cursor-not-allowed"
+              :disabled="isSendingInvite"
+            >
+              {{
+                isSendingInvite ? 'Enviando convite...' : 'Enviar convite'
+              }}
+            </button>
+          </div>
+        </form>
       </div>
 
       <div class="bg-white rounded-xl shadow-sm border border-gray-100">
@@ -419,7 +497,7 @@ onMounted(async () => {
                   <th class="py-2 pr-4 font-medium">E-mail</th>
                   <th class="py-2 pr-2 font-medium">Salário base</th>
                   <th class="py-2 pr-2 font-medium">Valor/dia</th>
-                  <th class="py-2 pr-4 font-medium text-right">Perfil</th>
+                  <th class="py-2 pr-4 font-medium text-right">Perfil / status</th>
                 </tr>
               </thead>
               <tbody>
@@ -487,93 +565,44 @@ onMounted(async () => {
                     />
                   </td>
                   <td class="py-2 pr-4 text-right">
-                    <span
-                      v-if="prof.is_admin"
-                      class="inline-flex items-center rounded-full bg-primary-light text-primary-dark px-2 py-0.5 text-[10px] font-semibold"
-                    >
-                      Admin
-                    </span>
-                    <span
-                      v-else
-                      class="inline-flex items-center rounded-full bg-gray-100 text-gray-700 px-2 py-0.5 text-[10px] font-semibold"
-                    >
-                      Profissional
-                    </span>
+                    <div class="flex flex-col items-end gap-1">
+                      <div class="flex items-center gap-1">
+                        <span
+                          v-if="prof.is_admin"
+                          class="inline-flex items-center rounded-full bg-primary-light text-primary-dark px-2 py-0.5 text-[10px] font-semibold"
+                        >
+                          Admin
+                        </span>
+                        <span
+                          v-else
+                          class="inline-flex items-center rounded-full bg-gray-100 text-gray-700 px-2 py-0.5 text-[10px] font-semibold"
+                        >
+                          Profissional
+                        </span>
+                        <span
+                          class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                          :class="
+                            prof.ativo
+                              ? 'bg-green-50 text-green-700 border border-green-200'
+                              : 'bg-gray-100 text-gray-600 border border-gray-200'
+                          "
+                        >
+                          {{ prof.ativo ? 'Ativo' : 'Desativado' }}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        class="text-[11px] text-primary-600 underline"
+                        @click="setVinculoAtivo(prof.id, !prof.ativo)"
+                      >
+                        {{ prof.ativo ? 'Desativar vínculo' : 'Reativar vínculo' }}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
             </table>
 
-            <div class="mt-6">
-              <h2 class="text-sm font-semibold text-primary-700 mb-4">
-                Enviar convite para profissional
-              </h2>
-
-              <form
-                class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end"
-                @submit.prevent="sendInvite"
-              >
-                <div class="md:col-span-1">
-                  <label class="block text-sm font-semibold text-gray-700 mb-1">
-                    E-mail do profissional
-                  </label>
-                  <input
-                    v-model="inviteForm.email"
-                    type="email"
-                    placeholder="profissional@exemplo.com"
-                    class="form-input"
-                  />
-                </div>
-                <div class="md:col-span-1">
-                  <label class="block text-sm font-semibold text-gray-700 mb-1">
-                    Profissão (opcional)
-                  </label>
-                  <select v-model="inviteForm.profissaoId" class="form-input">
-                    <option value="">
-                      Selecione
-                    </option>
-                    <option
-                      v-for="p in profissoes"
-                      :key="p.id"
-                      :value="p.id"
-                    >
-                      {{ p.nome }}
-                    </option>
-                  </select>
-                </div>
-                <div class="md:col-span-1">
-                  <label class="block text-sm font-semibold text-gray-700 mb-1">
-                    Especialidade (opcional)
-                  </label>
-                  <select
-                    v-model="inviteForm.especialidadeId"
-                    class="form-input"
-                  >
-                    <option value="">
-                      Selecione
-                    </option>
-                    <option
-                      v-for="e in especialidades"
-                      :key="e.id"
-                      :value="e.id"
-                    >
-                      {{ e.nome }}
-                    </option>
-                  </select>
-                </div>
-                <div class="md:col-span-3 flex justify-end mt-2">
-                  <button
-                    type="submit"
-                    class="btn-primary max-w-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                    :disabled="isSendingInvite"
-                  >
-                    {{
-                      isSendingInvite ? 'Enviando convite...' : 'Enviar convite'
-                    }}
-                  </button>
-                </div>
-              </form>
-            </div>
           </div>
 
           <div v-else>

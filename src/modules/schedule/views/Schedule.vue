@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { NCalendar, NConfigProvider, datePtBR, ptBR } from 'naive-ui'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedbackStore } from '@/stores/feedback'
@@ -33,6 +34,18 @@ const profissionalId = ref<string | null>(null)
 const estabelecimentoId = ref<string | null>(null)
 const filterProfessionalId = ref<string>('')
 const filterSpecialtyId = ref<string>('')
+
+const selectedDateTimestamp = computed<number | null>({
+  get() {
+    if (!selectedDate.value) return null
+    return new Date(selectedDate.value + 'T00:00:00').getTime()
+  },
+  set(value) {
+    if (!value) return
+    const d = new Date(value)
+    selectedDate.value = d.toISOString().substring(0, 10)
+  },
+})
 
 const isCreating = ref(false)
 const editingEventId = ref<string | null>(null)
@@ -89,20 +102,6 @@ const filteredProfessionalOptions = computed(() => {
   return professionalOptions.value.filter(
     (p) => p.especialidadeId === createForm.specialtyId,
   )
-})
-
-const filterSummary = computed(() => {
-  const esp =
-    filterSpecialtyId.value &&
-    specialtyOptions.value.find((e) => e.id === filterSpecialtyId.value)
-  const prof =
-    filterProfessionalId.value &&
-    professionalOptions.value.find((p) => p.id === filterProfessionalId.value)
-
-  const espLabel = esp ? esp.nome : 'todas as especialidades'
-  const profLabel = prof ? prof.nome : 'todos os profissionais'
-
-  return `Filtrando por ${espLabel}, ${profLabel}.`
 })
 
 watch(
@@ -759,10 +758,10 @@ onMounted(() => {
               </label>
               <select
                 v-model="filterSpecialtyId"
-                class="form-input text-[11px] h-7 w-44"
+                class="form-input text-[11px] h-7 w-44 text-gray-700 bg-white"
               >
                 <option value="">
-                  Todas
+                  Todas as especialidades
                 </option>
                 <option
                   v-for="esp in specialtyOptions"
@@ -779,45 +778,27 @@ onMounted(() => {
               </label>
               <select
                 v-model="filterProfessionalId"
-                class="form-input text-[11px] h-7 w-48"
+                class="form-input text-[11px] h-7 w-48 text-gray-700 bg-white"
               >
                 <option value="">
-                  Todos
+                  Todos os profissionais
                 </option>
                 <option
                   v-for="prof in professionalOptions"
                   :key="prof.id"
                   :value="prof.id"
                 >
-                  {{ prof.nome }}
-                  <span v-if="prof.especialidadeNome">
-                    - {{ prof.especialidadeNome }}
-                  </span>
+                  {{
+                    prof.especialidadeNome
+                      ? `${prof.nome} - ${prof.especialidadeNome}`
+                      : prof.nome
+                  }}
                 </option>
               </select>
             </div>
           </div>
         </div>
         <div class="flex flex-col items-end gap-3 text-xs">
-          <div class="flex items-center gap-2">
-            <label class="text-gray-600" for="agenda-date">Referência:</label>
-            <input
-              id="agenda-date"
-              v-model="selectedDate"
-              class="form-input text-xs py-1 px-2 w-32"
-              type="date"
-            />
-            <button
-              class="text-primary-600 underline"
-              type="button"
-              @click="loadEvents"
-            >
-              Atualizar
-            </button>
-          </div>
-          <p class="text-[11px] text-gray-500">
-            {{ filterSummary }}
-          </p>
           <button
             class="hidden md:inline-flex items-center rounded-lg border border-primary-600 text-primary-600 text-xs font-semibold px-3 py-1.5 hover:bg-primary-light"
             type="button"
@@ -828,106 +809,129 @@ onMounted(() => {
         </div>
       </div>
 
-      <h2 class="text-sm font-semibold text-primary-700 mb-2">
-        {{ periodLabel }}
-      </h2>
+      <div class="mt-4 flex flex-col md:flex-row gap-6">
+        <div class="md:w-[260px]">
+          <span class="block text-[11px] text-gray-600 mb-1">
+            Calendário
+          </span>
+          <div
+            class="bg-gray-50 border border-gray-100 rounded-lg p-2 shadow-sm overflow-hidden"
+          >
+            <n-config-provider :locale="ptBR" :date-locale="datePtBR">
+              <n-calendar
+                v-model:value="selectedDateTimestamp"
+                size="small"
+                class="calendar-compact"
+              />
+            </n-config-provider>
+          </div>
+        </div>
 
-      <div v-if="isLoading" class="text-xs text-gray-400">
-        Carregando agendamentos...
-      </div>
-      <div v-else-if="!events.length" class="text-sm text-gray-500">
-        Nenhum agendamento para o período selecionado.
-      </div>
-      <ul v-else class="divide-y divide-gray-100">
-        <li
-          v-for="event in events"
-          :key="event.id"
-          class="py-2 flex items-center justify-between text-sm"
-        >
-          <div>
-            <p class="font-medium text-gray-800">
-              {{
-                event.paciente_nome ||
-                event.paciente_nome_agenda ||
-                'Atendimento'
-              }}
-            </p>
-            <p class="text-xs text-gray-500">
-              {{
-                new Date(event.data_hora_inicio).toLocaleString()
-              }}
-              <span v-if="event.tipo_consulta" class="ml-1">
-                ·
-                {{
-                  event.tipo_consulta === 'consulta'
-                    ? 'Consulta'
-                    : event.tipo_consulta === 'retorno'
-                      ? 'Retorno'
-                      : event.tipo_consulta === 'procedimento'
-                        ? 'Procedimento'
-                        : event.tipo_consulta === 'exame'
-                          ? 'Exame'
-                          : 'Outro'
-                }}
-              </span>
-            </p>
-            <p class="text-xs text-gray-500">
-              Paciente:
-              <span class="font-medium">
-                {{
-                  event.paciente_nome ||
-                  event.paciente_nome_agenda ||
-                  'Não informado'
-                }}
-              </span>
-            </p>
+        <div class="flex-1">
+          <h2 class="text-sm font-semibold text-primary-700 mb-2">
+            {{ periodLabel }}
+          </h2>
+
+          <div v-if="isLoading" class="text-xs text-gray-400">
+            Carregando agendamentos...
           </div>
-          <div class="flex items-center gap-3">
-            <span
-              class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-              :class="[
-                event.status === 'agendado' && 'bg-gray-100 text-gray-700',
-                event.status === 'confirmado' && 'bg-green-100 text-green-700',
-                event.status === 'cancelado' && 'bg-red-100 text-red-700',
-                event.status === 'concluido' && 'bg-primary-100 text-primary-700',
-              ]"
-            >
-              {{
-                event.status === 'agendado'
-                  ? 'Agendado'
-                  : event.status === 'confirmado'
-                    ? 'Confirmado'
-                    : event.status === 'cancelado'
-                      ? 'Cancelado'
-                      : 'Concluído'
-              }}
-            </span>
-            <button
-              v-if="event.status === 'agendado'"
-              class="text-xs text-primary-600 underline"
-              type="button"
-              @click="confirmEvent(event)"
-            >
-              Confirmar
-            </button>
-            <button
-              class="text-xs text-primary-600 underline"
-              type="button"
-              @click="openEditModal(event)"
-            >
-              Editar
-            </button>
-            <button
-              v-if="event.status === 'confirmado' && !event.paciente_id"
-              class="text-xs text-primary-600 underline"
-              type="button"
-              @click="openPatientModal(event)"
-            >
-              Cadastrar paciente
-            </button>
+          <div v-else-if="!events.length" class="text-sm text-gray-500">
+            Nenhum agendamento para o período selecionado.
           </div>
-        </li>
-      </ul>
+          <ul v-else class="divide-y divide-gray-100">
+            <li
+              v-for="event in events"
+              :key="event.id"
+              class="py-2 flex items-center justify-between text-sm"
+            >
+              <div>
+                <p class="font-medium text-gray-800">
+                  {{
+                    event.paciente_nome ||
+                    event.paciente_nome_agenda ||
+                    'Atendimento'
+                  }}
+                </p>
+                <p class="text-xs text-gray-500">
+                  {{
+                    new Date(event.data_hora_inicio).toLocaleString()
+                  }}
+                  <span v-if="event.tipo_consulta" class="ml-1">
+                    ·
+                    {{
+                      event.tipo_consulta === 'consulta'
+                        ? 'Consulta'
+                        : event.tipo_consulta === 'retorno'
+                          ? 'Retorno'
+                          : event.tipo_consulta === 'procedimento'
+                            ? 'Procedimento'
+                            : event.tipo_consulta === 'exame'
+                              ? 'Exame'
+                              : 'Outro'
+                    }}
+                  </span>
+                </p>
+                <p class="text-xs text-gray-500">
+                  Paciente:
+                  <span class="font-medium">
+                    {{
+                      event.paciente_nome ||
+                      event.paciente_nome_agenda ||
+                      'Não informado'
+                    }}
+                  </span>
+                </p>
+              </div>
+              <div class="flex items-center gap-3">
+                <span
+                  class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                  :class="[
+                    event.status === 'agendado' && 'bg-gray-100 text-gray-700',
+                    event.status === 'confirmado' &&
+                      'bg-green-100 text-green-700',
+                    event.status === 'cancelado' && 'bg-red-100 text-red-700',
+                    event.status === 'concluido' &&
+                      'bg-primary-100 text-primary-700',
+                  ]"
+                >
+                  {{
+                    event.status === 'agendado'
+                      ? 'Agendado'
+                      : event.status === 'confirmado'
+                        ? 'Confirmado'
+                        : event.status === 'cancelado'
+                          ? 'Cancelado'
+                          : 'Concluído'
+                  }}
+                </span>
+                <button
+                  v-if="event.status === 'agendado'"
+                  class="text-xs text-primary-600 underline"
+                  type="button"
+                  @click="confirmEvent(event)"
+                >
+                  Confirmar
+                </button>
+                <button
+                  class="text-xs text-primary-600 underline"
+                  type="button"
+                  @click="openEditModal(event)"
+                >
+                  Editar
+                </button>
+                <button
+                  v-if="event.status === 'confirmado' && !event.paciente_id"
+                  class="text-xs text-primary-600 underline"
+                  type="button"
+                  @click="openPatientModal(event)"
+                >
+                  Cadastrar paciente
+                </button>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
     </div>
 
     <!-- Modal de novo agendamento -->
@@ -1300,3 +1304,65 @@ onMounted(() => {
     </div>
   </section>
 </template>
+
+<style scoped>
+.calendar-compact :deep(.n-calendar-dates .n-calendar-cell__text) {
+  font-size: 11px;
+}
+
+.calendar-compact :deep(.n-calendar-dates .n-calendar-cell) {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+/* Abreviação dos dias da semana: Dom, Seg, Ter, Qua, Qui, Sex, Sáb */
+.calendar-compact :deep(.n-calendar-weekdays .n-calendar-cell__text) {
+  font-size: 11px;
+  visibility: hidden;
+  position: relative;
+}
+
+.calendar-compact :deep(.n-calendar-weekdays .n-calendar-cell__text::after) {
+  visibility: visible;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calendar-compact
+  :deep(.n-calendar-weekdays .n-calendar-cell:nth-child(1) .n-calendar-cell__text::after) {
+  content: 'Dom';
+}
+
+.calendar-compact
+  :deep(.n-calendar-weekdays .n-calendar-cell:nth-child(2) .n-calendar-cell__text::after) {
+  content: 'Seg';
+}
+
+.calendar-compact
+  :deep(.n-calendar-weekdays .n-calendar-cell:nth-child(3) .n-calendar-cell__text::after) {
+  content: 'Ter';
+}
+
+.calendar-compact
+  :deep(.n-calendar-weekdays .n-calendar-cell:nth-child(4) .n-calendar-cell__text::after) {
+  content: 'Qua';
+}
+
+.calendar-compact
+  :deep(.n-calendar-weekdays .n-calendar-cell:nth-child(5) .n-calendar-cell__text::after) {
+  content: 'Qui';
+}
+
+.calendar-compact
+  :deep(.n-calendar-weekdays .n-calendar-cell:nth-child(6) .n-calendar-cell__text::after) {
+  content: 'Sex';
+}
+
+.calendar-compact
+  :deep(.n-calendar-weekdays .n-calendar-cell:nth-child(7) .n-calendar-cell__text::after) {
+  content: 'Sáb';
+}
+</style>

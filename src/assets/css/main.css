@@ -33,6 +33,6 @@ section {
 
   /* FORMS */
   .form-input {
-    @apply w-full py-3 px-6 rounded-lg text-sm border border-primary-light hover:border-primary-medium outline-primary transition;
+    @apply w-full py-3 px-6 rounded-lg text-sm text-gray-700 bg-white border border-primary-light hover:border-primary-medium outline-primary transition;
   }
 }

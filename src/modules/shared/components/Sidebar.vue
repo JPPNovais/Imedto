@@ -40,7 +40,9 @@
           active-class="bg-white/15"
           to="/home"
         >
-          <span class="w-5 text-center">🏠</span>
+          <span class="w-5 text-center">
+            <i class="fa-solid fa-house text-white" aria-hidden="true"></i>
+          </span>
           <span>Painel inicial</span>
         </RouterLink>
         <template v-if="canSeeMenus">
@@ -49,7 +51,12 @@
             active-class="bg-white/15"
             to="/agenda"
           >
-            <span class="w-5 text-center">📅</span>
+            <span class="w-5 text-center">
+              <i
+                class="fa-solid fa-calendar-days text-white"
+                aria-hidden="true"
+              ></i>
+            </span>
             <span>Gestão de atendimento</span>
           </RouterLink>
           <RouterLink
@@ -57,7 +64,12 @@
             active-class="bg-white/15"
             to="/pacientes"
           >
-            <span class="w-5 text-center">🧑‍🤝‍🧑</span>
+            <span class="w-5 text-center">
+              <i
+                class="fa-solid fa-people-group text-white"
+                aria-hidden="true"
+              ></i>
+            </span>
             <span>Pacientes</span>
           </RouterLink>
           <RouterLink
@@ -65,7 +77,9 @@
             active-class="bg-white/15"
             to="/perfil-profissional"
           >
-            <span class="w-5 text-center">👤</span>
+            <span class="w-5 text-center">
+              <i class="fa-solid fa-id-badge text-white" aria-hidden="true"></i>
+            </span>
             <span>Meu cadastro profissional</span>
           </RouterLink>
           <template v-if="isOwnerEstabelecimento">
@@ -75,7 +89,12 @@
               @click="isProfessionalsOpen = !isProfessionalsOpen"
             >
               <div class="flex items-center gap-2">
-                <span class="w-5 text-center">👥</span>
+                <span class="w-5 text-center">
+                  <i
+                    class="fa-solid fa-user-group text-white"
+                    aria-hidden="true"
+                  ></i>
+                </span>
                 <span>Profissionais</span>
               </div>
               <span class="text-xs text-white/70">
@@ -89,7 +108,12 @@
                 active-class="bg-white/15"
                 to="/profissionais"
               >
-                <span class="w-5 text-center">👥</span>
+                <span class="w-5 text-center">
+                  <i
+                    class="fa-solid fa-user-gear text-white"
+                    aria-hidden="true"
+                  ></i>
+                </span>
                 <span>Gestão de profissionais</span>
               </RouterLink>
               <RouterLink
@@ -97,7 +121,9 @@
                 active-class="bg-white/15"
                 to="/permissoes"
               >
-                <span class="w-5 text-center">🔑</span>
+                <span class="w-5 text-center">
+                  <i class="fa-solid fa-key text-white" aria-hidden="true"></i>
+                </span>
                 <span>Permissões</span>
               </RouterLink>
             </div>
@@ -110,7 +136,12 @@
           type="button"
           class="flex items-center gap-2 w-full px-3 py-2 hover:text-white/90"
         >
-          <span class="w-5 text-center">?</span>
+          <span class="w-5 text-center">
+            <i
+              class="fa-regular fa-circle-question text-white"
+              aria-hidden="true"
+            ></i>
+          </span>
           <span>Suporte</span>
         </button>
         <RouterLink
@@ -119,7 +150,9 @@
           active-class="text-white"
           to="/estabelecimento"
         >
-          <span class="w-5 text-center">⚙️</span>
+          <span class="w-5 text-center">
+            <i class="fa-solid fa-gear text-white" aria-hidden="true"></i>
+          </span>
           <span>Configuração</span>
         </RouterLink>
       </div>
