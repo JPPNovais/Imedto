@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { NCalendar, NConfigProvider, datePtBR, ptBR } from 'naive-ui'
+import { NDatePicker, NConfigProvider, datePtBR, ptBR } from 'naive-ui'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedbackStore } from '@/stores/feedback'
@@ -818,7 +818,7 @@ onMounted(() => {
       </div>
 
       <div class="mt-4 flex flex-col md:flex-row gap-6">
-        <div class="md:w-[260px]">
+        <div class="md:w-[320px]">
           <span class="block text-[11px] text-gray-600 mb-1">
             Calendário
           </span>
@@ -826,8 +826,10 @@ onMounted(() => {
             class="bg-gray-50 border border-gray-100 rounded-lg p-2 shadow-sm overflow-hidden"
           >
             <n-config-provider :locale="ptBR" :date-locale="datePtBR">
-              <n-calendar
+              <n-date-picker
                 v-model:value="selectedDateTimestamp"
+                type="date"
+                panel
                 size="small"
                 class="calendar-compact"
                 style="height: 360px"
