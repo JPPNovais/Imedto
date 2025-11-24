@@ -47,6 +47,8 @@ const novaSala = reactive({
   tipoSalaId: '',
 })
 
+const activeTab = ref<'dados' | 'salas' | 'outras'>('dados')
+
 async function loadData() {
   if (!auth.currentUser?.id) {
     router.push('/login')
@@ -126,7 +128,9 @@ async function saveEstabelecimento() {
     }
     cpfCnpjToSave = formatCpfCnpj(digits)
   } else if (digits.length === 11) {
-    feedback.error('Use apenas CNPJ (14 dígitos) ou deixe em branco.')
+    feedback.error(
+      'CPF não é permitido para o estabelecimento. Use apenas CNPJ (14 dígitos) ou deixe em branco.',
+    )
     return
   } else {
     feedback.error('CNPJ incompleto. Verifique e tente novamente.')
@@ -222,6 +226,10 @@ async function addSala() {
   }
 }
 
+function goToMedicalRecordModels() {
+  router.push({ name: 'medical-record-models' })
+}
+
 async function onCepBlurEstab() {
   if (!formEstab.cep) return
   try {
@@ -260,7 +268,37 @@ onMounted(() => {
     </header>
 
     <div class="max-w-4xl space-y-6">
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <div class="inline-flex rounded-full bg-gray-50 p-1 text-xs font-semibold text-gray-600 mb-2">
+        <button
+          class="px-4 py-1 rounded-full"
+          :class="activeTab === 'dados' ? 'bg-white text-primary-700 shadow-sm' : ''"
+          type="button"
+          @click="activeTab = 'dados'"
+        >
+          Dados do estabelecimento
+        </button>
+        <button
+          class="px-4 py-1 rounded-full"
+          :class="activeTab === 'salas' ? 'bg-white text-primary-700 shadow-sm' : ''"
+          type="button"
+          @click="activeTab = 'salas'"
+        >
+          Salas de atendimento
+        </button>
+        <button
+          class="px-4 py-1 rounded-full"
+          :class="activeTab === 'outras' ? 'bg-white text-primary-700 shadow-sm' : ''"
+          type="button"
+          @click="activeTab = 'outras'"
+        >
+          Outras configurações
+        </button>
+      </div>
+
+      <div
+        v-if="activeTab === 'dados'"
+        class="bg-white rounded-xl shadow-sm border border-gray-100 p-6"
+      >
         <h2 class="text-sm font-semibold text-primary-700 mb-4">
           Dados do estabelecimento
         </h2>
@@ -279,13 +317,13 @@ onMounted(() => {
             </div>
             <div>
               <label class="block text-sm font-semibold text-gray-700 mb-1">
-                CPF / CNPJ
+                CNPJ (opcional)
               </label>
               <input
                 v-model="formEstab.cpfCnpj"
                 type="text"
                 maxlength="18"
-                placeholder="Digite o CPF ou CNPJ"
+                placeholder="Digite o CNPJ (opcional)"
                 class="form-input"
                 @input="formEstab.cpfCnpj = formatCpfCnpj(formEstab.cpfCnpj)"
               />
@@ -387,7 +425,10 @@ onMounted(() => {
         </form>
       </div>
 
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <div
+        v-if="activeTab === 'salas'"
+        class="bg-white rounded-xl shadow-sm border border-gray-100 p-6"
+      >
         <h2 class="text-sm font-semibold text-primary-700 mb-4">
           Salas de atendimento
         </h2>
@@ -447,6 +488,26 @@ onMounted(() => {
             <span class="text-gray-800">{{ sala.nome }}</span>
           </li>
         </ul>
+      </div>
+
+      <div
+        v-if="activeTab === 'outras'"
+        class="bg-white rounded-xl shadow-sm border border-gray-100 p-6"
+      >
+        <h2 class="text-sm font-semibold text-primary-700 mb-2">
+          Modelos de prontuário
+        </h2>
+        <p class="text-xs text-gray-500 mb-3">
+          Configure os modelos de prontuário que poderão ser utilizados nas
+          evoluções de pacientes neste estabelecimento.
+        </p>
+        <button
+          type="button"
+          class="inline-flex items-center rounded-lg border border-primary-600 text-primary-600 text-xs font-semibold px-4 py-2 hover:bg-primary-light"
+          @click="goToMedicalRecordModels"
+        >
+          Gerenciar modelos de prontuário
+        </button>
       </div>
 
       <p v-if="isLoading" class="text-xs text-gray-400">

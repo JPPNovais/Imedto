@@ -19,6 +19,9 @@ import EstablishmentSettings from '@/modules/establishment/views/EstablishmentSe
 import ProfessionalsManagement from '@/modules/professionals/views/ProfessionalsManagement.vue'
 import PermissionsManagement from '@/modules/permissions/views/PermissionsManagement.vue'
 import PatientsList from '@/modules/patients/views/PatientsList.vue'
+import MedicalRecord from '@/modules/medical-record/views/MedicalRecord.vue'
+import MedicalRecordModels from '@/modules/medical-record/views/MedicalRecordModels.vue'
+import MedicalWorklist from '@/modules/medical-record/views/MedicalWorklist.vue'
 
 const ifNotAuthenticated = (
   to: RouteLocationNormalized | undefined,
@@ -102,6 +105,11 @@ const router = createRouter({
           component: PatientsList,
         },
         {
+          path: 'prontuario/:pacienteId?',
+          name: 'medical-record',
+          component: MedicalRecord,
+        },
+        {
           path: 'estabelecimento',
           name: 'establishment-settings',
           component: EstablishmentSettings,
@@ -115,6 +123,16 @@ const router = createRouter({
           path: 'permissoes',
           name: 'permissions-management',
           component: PermissionsManagement,
+        },
+        {
+          path: 'modelos-prontuario',
+          name: 'medical-record-models',
+          component: MedicalRecordModels,
+        },
+        {
+          path: 'minhas-consultas',
+          name: 'medical-worklist',
+          component: MedicalWorklist,
         },
       ],
     },

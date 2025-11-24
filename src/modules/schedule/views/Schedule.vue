@@ -18,7 +18,9 @@ type Evento = {
   profissional_id: string | null
   especialidade_id: string | null
   paciente_nome_agenda: string | null
-   paciente_telefone_agenda: string | null
+  paciente_telefone_agenda: string | null
+  profissional_nome: string | null
+  especialidade_nome: string | null
 }
 
 type Periodo = 'dia' | 'semana' | 'mes'
@@ -185,6 +187,10 @@ async function loadEvents() {
         paciente_id,
         paciente:pacientes ( nome_completo ),
         profissional_id,
+        profissional:profissionais (
+          nome_exibicao,
+          especialidade:especialidades ( nome )
+        ),
         especialidade_id,
         paciente_nome_agenda,
         paciente_telefone_agenda
@@ -227,6 +233,8 @@ async function loadEvents() {
           especialidade_id: e.especialidade_id ?? null,
           paciente_nome_agenda: e.paciente_nome_agenda ?? null,
           paciente_telefone_agenda: e.paciente_telefone_agenda ?? null,
+          profissional_nome: e.profissional?.nome_exibicao ?? null,
+          especialidade_nome: e.profissional?.especialidade?.nome ?? null,
         }),
       )
     }
@@ -872,13 +880,14 @@ onMounted(() => {
                   </span>
                 </p>
                 <p class="text-xs text-gray-500">
-                  Paciente:
+                  Profissional:
                   <span class="font-medium">
                     {{
-                      event.paciente_nome ||
-                      event.paciente_nome_agenda ||
-                      'Não informado'
+                      event.profissional_nome || 'Não informado'
                     }}
+                  </span>
+                  <span v-if="event.especialidade_nome" class="ml-1">
+                    · {{ event.especialidade_nome }}
                   </span>
                 </p>
               </div>
