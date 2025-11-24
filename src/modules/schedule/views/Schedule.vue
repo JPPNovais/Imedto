@@ -830,6 +830,7 @@ onMounted(() => {
                 v-model:value="selectedDateTimestamp"
                 size="small"
                 class="calendar-compact"
+                style="height: 360px"
               />
             </n-config-provider>
           </div>
