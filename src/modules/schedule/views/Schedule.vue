@@ -766,7 +766,7 @@ onMounted(() => {
               </label>
               <select
                 v-model="filterSpecialtyId"
-                class="form-input text-[11px] h-7 w-44 text-gray-700 bg-white"
+                class="form-input text-[11px] h-7 w-44 text-gray-700 bg-white p-0 pl-2"
               >
                 <option value="">
                   Todas as especialidades
@@ -786,7 +786,7 @@ onMounted(() => {
               </label>
               <select
                 v-model="filterProfessionalId"
-                class="form-input text-[11px] h-7 w-48 text-gray-700 bg-white"
+                class="form-input text-[11px] h-7 w-48 text-gray-700 bg-white p-0 pl-2"
               >
                 <option value="">
                   Todos os profissionais

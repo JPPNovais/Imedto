@@ -152,7 +152,7 @@ import { reactive, ref } from 'vue'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import router from '@/router'
-import { formatCpfCnpj, isValidCpfCnpj } from '@/utils/masks'
+import { formatCpfCnpj, isValidCpfCnpj, isValidCnpj } from '@/utils/masks'
 
 const auth = useAuthStore()
 
@@ -211,7 +211,10 @@ async function handleSubmit() {
         .insert({
           nome_fantasia: form.nomeEstabelecimento || form.nomeCompleto,
           tipo_pessoa: form.tipoPessoa,
-          cpf_cnpj: form.cpfCnpj,
+          // Só grava CNPJ válido para o estabelecimento.
+          // Se o usuário informou apenas CPF (pessoa física),
+          // não atribuímos esse valor ao cadastro de estabelecimento.
+          cpf_cnpj: isValidCnpj(form.cpfCnpj) ? form.cpfCnpj : null,
           owner_usuario_id: userId,
         })
         .select('id')
