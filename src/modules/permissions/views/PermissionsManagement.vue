@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedbackStore } from '@/stores/feedback'
+import { PERMISSIONS, permissionLabel } from '@/constants/permissions'
 
 type PermissaoModelo = {
   id: string
@@ -19,15 +20,27 @@ type ProfissionalVinculado = {
 const auth = useAuthStore()
 const feedback = useFeedbackStore()
 
+const availablePermissions = PERMISSIONS
+
 const estabelecimentoId = ref<string | null>(null)
 const modelos = ref<PermissaoModelo[]>([])
 const profissionais = ref<ProfissionalVinculado[]>([])
 const isLoading = ref(false)
 const isSavingModelo = ref(false)
+const isSavingEdicao = ref(false)
+const isEditModalOpen = ref(false)
+const modeloSendoEditado = reactive({
+  id: '',
+  nome: '',
+  permissoesSelecionadas: [] as string[],
+})
+const modeloSendoExcluidoId = ref<string | null>(null)
+
+const DEFAULT_MODEL_NAMES = ['Admin', 'Médico', 'Recepção']
 
 const novoModelo = reactive({
   nome: '',
-  permissoesTexto: '',
+  permissoesSelecionadas: [] as string[],
 })
 
 async function loadEstabelecimento() {
@@ -160,10 +173,7 @@ async function saveNovoModelo() {
   isSavingModelo.value = true
 
   try {
-    const permissoesArray = novoModelo.permissoesTexto
-      .split(',')
-      .map((p) => p.trim())
-      .filter(Boolean)
+    const permissoesArray = [...novoModelo.permissoesSelecionadas]
 
     const { error } = await supabase
       .from('modelo_permissao_estabelecimento')
@@ -181,7 +191,7 @@ async function saveNovoModelo() {
 
     feedback.success('Modelo de permissão criado com sucesso.')
     novoModelo.nome = ''
-    novoModelo.permissoesTexto = ''
+    novoModelo.permissoesSelecionadas = []
     await loadModelos()
   } finally {
     isSavingModelo.value = false
@@ -204,6 +214,93 @@ async function updateProfissionalModelo(
   }
 
   feedback.success('Permissões do profissional atualizadas com sucesso.')
+}
+
+function isDefaultModel(modelo: PermissaoModelo): boolean {
+  return DEFAULT_MODEL_NAMES.includes(modelo.nome)
+}
+
+function abrirEdicaoModelo(modelo: PermissaoModelo) {
+  if (isDefaultModel(modelo)) return
+  modeloSendoEditado.id = modelo.id
+  modeloSendoEditado.nome = modelo.nome
+  modeloSendoEditado.permissoesSelecionadas = [...(modelo.permissoes ?? [])]
+  isEditModalOpen.value = true
+}
+
+function fecharEdicaoModelo() {
+  isEditModalOpen.value = false
+  modeloSendoEditado.id = ''
+  modeloSendoEditado.nome = ''
+  modeloSendoEditado.permissoesSelecionadas = []
+}
+
+async function salvarEdicaoModelo() {
+  if (!estabelecimentoId.value || !modeloSendoEditado.id) return
+  if (!modeloSendoEditado.nome) {
+    feedback.error('Informe o nome do modelo de permissão.')
+    return
+  }
+
+  isSavingEdicao.value = true
+
+  try {
+    const permissoesArray = [...modeloSendoEditado.permissoesSelecionadas]
+
+    const { error } = await supabase
+      .from('modelo_permissao_estabelecimento')
+      .update({
+        nome: modeloSendoEditado.nome,
+        permissoes: permissoesArray,
+      })
+      .eq('id', modeloSendoEditado.id)
+      .eq('estabelecimento_id', estabelecimentoId.value)
+
+    if (error) {
+      console.error(error)
+      feedback.error('Não foi possível atualizar o modelo de permissão.')
+      return
+    }
+
+    feedback.success('Modelo de permissão atualizado com sucesso.')
+    fecharEdicaoModelo()
+    await loadModelos()
+  } finally {
+    isSavingEdicao.value = false
+  }
+}
+
+async function excluirModelo(modelo: PermissaoModelo) {
+  if (!estabelecimentoId.value) return
+  if (isDefaultModel(modelo)) return
+
+  const confirmado = window.confirm(
+    `Tem certeza que deseja excluir o modelo "${modelo.nome}"?`,
+  )
+  if (!confirmado) return
+
+  modeloSendoExcluidoId.value = modelo.id
+
+  try {
+    const { error } = await supabase
+      .from('modelo_permissao_estabelecimento')
+      .delete()
+      .eq('id', modelo.id)
+      .eq('estabelecimento_id', estabelecimentoId.value)
+
+    if (error) {
+      console.error(error)
+      feedback.error(
+        'Não foi possível excluir o modelo. Verifique se ele não está em uso por algum profissional.',
+      )
+      return
+    }
+
+    feedback.success('Modelo de permissão excluído com sucesso.')
+    await loadModelos()
+  } finally {
+    modeloSendoExcluidoId.value = null
+  }
 }
 
 onMounted(async () => {
@@ -267,8 +364,40 @@ onMounted(async () => {
                 {{ m.nome }}
               </p>
               <p class="text-xs text-gray-500">
-                {{ m.permissoes.join(', ') || 'Sem permissões definidas' }}
+                {{
+                  m.permissoes.length
+                    ? m.permissoes.map((p) => permissionLabel(p)).join(', ')
+                    : 'Sem permissões definidas'
+                }}
               </p>
+            </div>
+            <div class="flex flex-col items-end gap-1 text-[11px]">
+              <span
+                v-if="isDefaultModel(m)"
+                class="text-gray-400"
+              >
+                Modelo padrão
+              </span>
+              <div
+                v-else
+                class="flex gap-2"
+              >
+                <button
+                  class="text-primary-600 hover:text-primary-800 underline"
+                  type="button"
+                  @click="abrirEdicaoModelo(m)"
+                >
+                  Editar
+                </button>
+                <button
+                  class="text-red-600 hover:text-red-700 underline disabled:opacity-60"
+                  type="button"
+                  :disabled="modeloSendoExcluidoId === m.id"
+                  @click="excluirModelo(m)"
+                >
+                  Excluir
+                </button>
+              </div>
             </div>
           </li>
         </ul>
@@ -294,14 +423,26 @@ onMounted(async () => {
             </div>
             <div class="md:col-span-2">
               <label class="block text-xs font-semibold text-gray-700 mb-1">
-                Permissões (separadas por vírgula)
+                Telas e áreas liberadas
               </label>
-              <input
-                v-model="novoModelo.permissoesTexto"
-                class="form-input text-xs"
-                placeholder="agenda, pacientes, prontuario"
-                type="text"
-              />
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <label
+                  v-for="perm in availablePermissions"
+                  :key="perm.id"
+                  class="inline-flex items-center gap-2 text-gray-700"
+                >
+                  <input
+                    v-model="novoModelo.permissoesSelecionadas"
+                    class="rounded border-gray-300 text-primary focus:ring-primary"
+                    type="checkbox"
+                    :value="perm.id"
+                  />
+                  <span>{{ perm.label }}</span>
+                </label>
+              </div>
+              <p class="mt-1 text-[11px] text-gray-400">
+                Selecione as telas que este modelo poderá ver e acessar.
+              </p>
             </div>
             <div class="md:col-span-3 flex justify-end mt-2">
               <button
@@ -310,6 +451,66 @@ onMounted(async () => {
                 type="submit"
               >
                 {{ isSavingModelo ? 'Salvando...' : 'Criar modelo' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Modal de edição de modelo -->
+      <div
+        v-if="isEditModalOpen"
+        class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+      >
+        <div class="w-full max-w-md bg-white rounded-2xl shadow-lg p-6">
+          <h3 class="text-sm font-semibold text-primary-700 mb-4">
+            Editar modelo de permissão
+          </h3>
+          <form class="space-y-4" @submit.prevent="salvarEdicaoModelo">
+            <div>
+              <label class="block text-xs font-semibold text-gray-700 mb-1">
+                Nome do modelo
+              </label>
+              <input
+                v-model="modeloSendoEditado.nome"
+                class="form-input text-xs"
+                type="text"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-700 mb-1">
+                Telas e áreas liberadas
+              </label>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs max-h-56 overflow-y-auto pr-1">
+                <label
+                  v-for="perm in availablePermissions"
+                  :key="perm.id"
+                  class="inline-flex items-center gap-2 text-gray-700"
+                >
+                  <input
+                    v-model="modeloSendoEditado.permissoesSelecionadas"
+                    class="rounded border-gray-300 text-primary focus:ring-primary"
+                    type="checkbox"
+                    :value="perm.id"
+                  />
+                  <span>{{ perm.label }}</span>
+                </label>
+              </div>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+              <button
+                class="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                type="button"
+                @click="fecharEdicaoModelo"
+              >
+                Cancelar
+              </button>
+              <button
+                class="btn-primary text-xs py-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                :disabled="isSavingEdicao"
+                type="submit"
+              >
+                {{ isSavingEdicao ? 'Salvando...' : 'Salvar alterações' }}
               </button>
             </div>
           </form>

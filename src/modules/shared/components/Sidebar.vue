@@ -47,6 +47,7 @@
         </RouterLink>
         <template v-if="canSeeMenus">
           <RouterLink
+            v-if="permissionsStore.hasPermission('agenda')"
             class="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-white/10"
             active-class="bg-white/15"
             to="/agenda"
@@ -60,6 +61,7 @@
             <span>Gestão de atendimento</span>
           </RouterLink>
           <RouterLink
+            v-if="permissionsStore.hasPermission('minhas_consultas')"
             class="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-white/10"
             active-class="bg-white/15"
             to="/minhas-consultas"
@@ -73,6 +75,7 @@
             <span>Minhas consultas</span>
           </RouterLink>
           <RouterLink
+            v-if="permissionsStore.hasPermission('pacientes')"
             class="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-white/10"
             active-class="bg-white/15"
             to="/pacientes"
@@ -95,7 +98,12 @@
             </span>
             <span>Meu cadastro profissional</span>
           </RouterLink>
-          <template v-if="isOwnerEstabelecimento">
+          <template
+            v-if="
+              permissionsStore.hasPermission('profissionais') ||
+              permissionsStore.hasPermission('permissoes')
+            "
+          >
             <button
               type="button"
               class="mt-4 flex w-full items-center justify-between px-3 py-2 rounded-lg hover:bg-white/10 text-[13px] font-medium"
@@ -117,6 +125,7 @@
 
             <div v-if="isProfessionalsOpen" class="mt-1 space-y-1">
               <RouterLink
+                v-if="permissionsStore.hasPermission('profissionais')"
                 class="flex items-center rounded-lg pl-9 pr-3 py-1.5 hover:bg-white/10 text-[13px]"
                 active-class="bg-white/15"
                 to="/profissionais"
@@ -124,6 +133,7 @@
                 <span>Gestão de profissionais</span>
               </RouterLink>
               <RouterLink
+                v-if="permissionsStore.hasPermission('permissoes')"
                 class="flex items-center rounded-lg pl-9 pr-3 py-1.5 hover:bg-white/10 text-[13px]"
                 active-class="bg-white/15"
                 to="/permissoes"
@@ -149,7 +159,7 @@
           <span>Suporte</span>
         </button>
         <RouterLink
-          v-if="isOwnerEstabelecimento"
+          v-if="permissionsStore.hasPermission('config_estabelecimento')"
           class="flex items-center gap-2 w-full px-3 py-2 hover:text-white/90"
           active-class="text-white"
           to="/estabelecimento"
@@ -169,14 +179,19 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
+import { usePermissionsStore } from '@/stores/permissions'
 
 const auth = useAuthStore()
-const canSeeMenus = ref(false)
-const isOwnerEstabelecimento = ref(false)
+const permissionsStore = usePermissionsStore()
+const canSeeMenus = computed(
+  () =>
+    permissionsStore.permissions.length > 0 ||
+    permissionsStore.isOwnerEstabelecimento,
+)
 const isProfessionalsOpen = ref(false)
 const userName = ref('')
 const userRole = ref('Profissional')
@@ -214,8 +229,6 @@ onMounted(async () => {
     .maybeSingle()
 
   if (estabOwner?.id) {
-    isOwnerEstabelecimento.value = true
-    canSeeMenus.value = true
     userClinic.value = estabOwner.nome_fantasia ?? null
   }
 
@@ -237,10 +250,6 @@ onMounted(async () => {
   }
 
   if (!profissional?.id) {
-    // sem profissional cadastrado → sem menus adicionais
-    if (!isOwnerEstabelecimento.value) {
-      canSeeMenus.value = false
-    }
     return
   }
 
@@ -257,14 +266,11 @@ onMounted(async () => {
     .limit(1)
     .maybeSingle()
 
-  if (vinculo?.id) {
-    canSeeMenus.value = true
-    if (!userClinic.value) {
-      userClinic.value = vinculo.estabelecimento?.nome_fantasia ?? null
-    }
-  } else if (!isOwnerEstabelecimento.value) {
-    canSeeMenus.value = false
+  if (vinculo?.id && !userClinic.value) {
+    userClinic.value = vinculo.estabelecimento?.nome_fantasia ?? null
   }
+
+  await permissionsStore.ensureLoaded()
 
   updateSubmenuStateByRoute()
 })

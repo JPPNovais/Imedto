@@ -5,6 +5,8 @@ import {
   RouteLocationNormalized,
 } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { usePermissionsStore } from '@/stores/permissions'
+import { ROUTE_PERMISSIONS } from '@/constants/permissions'
 
 // STRUCTURE
 import PageBody from '@/modules/shared/structure/PageBody.vue'
@@ -38,7 +40,7 @@ const ifNotAuthenticated = (
   next('/')
 }
 
-const ifAuthenticated = (
+const ifAuthenticated = async (
   to: RouteLocationNormalized | undefined,
   from: RouteLocationNormalized | undefined,
   next: NavigationGuardNext,
@@ -60,6 +62,18 @@ const ifAuthenticated = (
 
   // Se onboarding já foi concluído, não faz sentido voltar para a tela de onboarding
   if (auth.hasCompletedOnboarding && to?.name === 'onboarding') {
+    next('/home')
+    return
+  }
+
+  // Controle de acesso por permissão (apenas após login e onboarding)
+  const permissionsStore = usePermissionsStore()
+  await permissionsStore.ensureLoaded()
+
+  const routeName = (to?.name as string | undefined) ?? ''
+  const requiredPermission = ROUTE_PERMISSIONS[routeName] ?? null
+
+  if (!permissionsStore.hasPermission(requiredPermission)) {
     next('/home')
     return
   }
