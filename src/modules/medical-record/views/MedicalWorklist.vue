@@ -126,6 +126,27 @@ async function loadWorklist() {
   }
 }
 
+function goToPreviousDay() {
+  const base = selectedDate.value
+    ? new Date(selectedDate.value + 'T00:00:00')
+    : new Date()
+  base.setDate(base.getDate() - 1)
+  selectedDate.value = base.toISOString().substring(0, 10)
+}
+
+function goToNextDay() {
+  const base = selectedDate.value
+    ? new Date(selectedDate.value + 'T00:00:00')
+    : new Date()
+  base.setDate(base.getDate() + 1)
+  selectedDate.value = base.toISOString().substring(0, 10)
+}
+
+function goToToday() {
+  const today = new Date()
+  selectedDate.value = today.toISOString().substring(0, 10)
+}
+
 onMounted(async () => {
   await loadContext()
   if (!estabelecimentoId.value || !profissionalId.value) return
@@ -157,12 +178,33 @@ watch(
         <label class="text-gray-600" for="worklist-date">
           Dia:
         </label>
+        <button
+          class="h-8 w-8 flex items-center justify-center rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 active:bg-gray-100 active:border-gray-400 transition-colors"
+          type="button"
+          @click="goToPreviousDay"
+        >
+          ‹
+        </button>
         <input
           id="worklist-date"
           v-model="selectedDate"
-          class="form-input text-xs py-1 px-2 w-32"
+          class="form-input text-xs py-1 px-2 w-32 text-center"
           type="date"
         />
+        <button
+          class="h-8 w-8 flex items-center justify-center rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 active:bg-gray-100 active:border-gray-400 transition-colors"
+          type="button"
+          @click="goToNextDay"
+        >
+          ›
+        </button>
+        <button
+          class="ml-1 h-8 px-3 inline-flex items-center justify-center rounded-md border border-gray-200 text-[11px] font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 active:bg-gray-100 active:border-gray-400 transition-colors"
+          type="button"
+          @click="goToToday"
+        >
+          Hoje
+        </button>
       </div>
     </header>
 
@@ -228,4 +270,3 @@ watch(
     </div>
   </section>
 </template>
-

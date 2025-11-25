@@ -365,6 +365,11 @@ async function createEvent() {
     return
   }
 
+  if (!createForm.patientPhone) {
+    feedback.error('Informe o telefone do paciente.')
+    return
+  }
+
   const start = new Date(`${createForm.date}T${createForm.time}:00`)
   const end = new Date(start)
   end.setMinutes(start.getMinutes() + (createForm.durationMinutes || 30))
@@ -431,7 +436,7 @@ async function createEvent() {
     data_hora_fim: end.toISOString(),
     tipo_consulta: createForm.tipoConsulta || null,
     paciente_nome_agenda: createForm.patientName,
-    paciente_telefone_agenda: createForm.patientPhone || null,
+    paciente_telefone_agenda: createForm.patientPhone,
     especialidade_id: createForm.specialtyId || null,
   }
 
@@ -849,99 +854,133 @@ onMounted(() => {
           <div v-else-if="!events.length" class="text-sm text-gray-500">
             Nenhum agendamento para o período selecionado.
           </div>
-          <ul v-else class="divide-y divide-gray-100">
-            <li
-              v-for="event in events"
-              :key="event.id"
-              class="py-2 flex items-center justify-between text-sm"
+          <div v-else class="border border-gray-100 rounded-lg overflow-hidden">
+            <div
+              class="hidden md:grid grid-cols-[1.2fr,0.7fr,0.9fr,0.8fr,0.6fr] bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 px-3 py-2"
             >
-              <div>
-                <p class="font-medium text-gray-800">
-                  {{
-                    event.paciente_nome ||
-                    event.paciente_nome_agenda ||
-                    'Atendimento'
-                  }}
-                </p>
-                <p class="text-xs text-gray-500">
-                  {{
-                    new Date(event.data_hora_inicio).toLocaleString()
-                  }}
-                  <span v-if="event.tipo_consulta" class="ml-1">
-                    ·
+              <span>Paciente / Profissional</span>
+              <span>Horário</span>
+              <span>Telefone</span>
+              <span>Status</span>
+              <span class="text-right">
+                Ações
+              </span>
+            </div>
+            <ul class="divide-y divide-gray-100">
+              <li
+                v-for="event in events"
+                :key="event.id"
+                class="px-3 py-2 text-xs md:text-sm flex flex-col md:grid md:grid-cols-[1.2fr,0.7fr,0.9fr,0.8fr,0.6fr] md:items-center gap-1 md:gap-3"
+              >
+                <div>
+                  <p class="font-medium text-gray-800">
                     {{
-                      event.tipo_consulta === 'consulta'
-                        ? 'Consulta'
-                        : event.tipo_consulta === 'retorno'
-                          ? 'Retorno'
-                          : event.tipo_consulta === 'procedimento'
-                            ? 'Procedimento'
-                            : event.tipo_consulta === 'exame'
-                              ? 'Exame'
-                              : 'Outro'
+                      event.paciente_nome ||
+                      event.paciente_nome_agenda ||
+                      'Atendimento'
+                    }}
+                  </p>
+                  <p class="text-[11px] text-gray-500">
+                    <span class="font-medium">
+                      {{ event.profissional_nome || 'Profissional não informado' }}
+                    </span>
+                    <span v-if="event.especialidade_nome" class="ml-1">
+                      · {{ event.especialidade_nome }}
+                    </span>
+                  </p>
+                </div>
+                <div class="text-gray-700">
+                  <p class="text-xs">
+                    {{
+                      new Date(event.data_hora_inicio).toLocaleTimeString(
+                        'pt-BR',
+                        { hour: '2-digit', minute: '2-digit' },
+                      )
+                    }}
+                  </p>
+                  <p class="text-[11px] text-gray-400">
+                    {{
+                      new Date(event.data_hora_inicio).toLocaleDateString(
+                        'pt-BR',
+                      )
+                    }}
+                    <span v-if="event.tipo_consulta" class="ml-1">
+                      ·
+                      {{
+                        event.tipo_consulta === 'consulta'
+                          ? 'Consulta'
+                          : event.tipo_consulta === 'retorno'
+                            ? 'Retorno'
+                            : event.tipo_consulta === 'procedimento'
+                              ? 'Procedimento'
+                              : event.tipo_consulta === 'exame'
+                                ? 'Exame'
+                                : 'Outro'
+                      }}
+                    </span>
+                  </p>
+                </div>
+                <div class="text-xs text-gray-700">
+                  <span v-if="event.paciente_telefone_agenda">
+                    {{ formatPhone(event.paciente_telefone_agenda) }}
+                  </span>
+                  <span v-else class="text-gray-400">
+                    Não informado
+                  </span>
+                </div>
+                <div>
+                  <span
+                    class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
+                    :class="[
+                      event.status === 'agendado' &&
+                        'bg-gray-100 text-gray-700',
+                      event.status === 'confirmado' &&
+                        'bg-green-100 text-green-700',
+                      event.status === 'cancelado' &&
+                        'bg-red-100 text-red-700',
+                      event.status === 'concluido' &&
+                        'bg-primary-100 text-primary-700',
+                    ]"
+                  >
+                    {{
+                      event.status === 'agendado'
+                        ? 'Agendado'
+                        : event.status === 'confirmado'
+                          ? 'Confirmado'
+                          : event.status === 'cancelado'
+                            ? 'Cancelado'
+                            : 'Concluído'
                     }}
                   </span>
-                </p>
-                <p class="text-xs text-gray-500">
-                  Profissional:
-                  <span class="font-medium">
-                    {{
-                      event.profissional_nome || 'Não informado'
-                    }}
-                  </span>
-                  <span v-if="event.especialidade_nome" class="ml-1">
-                    · {{ event.especialidade_nome }}
-                  </span>
-                </p>
-              </div>
-              <div class="flex items-center gap-3">
-                <span
-                  class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                  :class="[
-                    event.status === 'agendado' && 'bg-gray-100 text-gray-700',
-                    event.status === 'confirmado' &&
-                      'bg-green-100 text-green-700',
-                    event.status === 'cancelado' && 'bg-red-100 text-red-700',
-                    event.status === 'concluido' &&
-                      'bg-primary-100 text-primary-700',
-                  ]"
-                >
-                  {{
-                    event.status === 'agendado'
-                      ? 'Agendado'
-                      : event.status === 'confirmado'
-                        ? 'Confirmado'
-                        : event.status === 'cancelado'
-                          ? 'Cancelado'
-                          : 'Concluído'
-                  }}
-                </span>
-                <button
-                  v-if="event.status === 'agendado'"
-                  class="text-xs text-primary-600 underline"
-                  type="button"
-                  @click="confirmEvent(event)"
-                >
-                  Confirmar
-                </button>
-                <button
-                  class="text-xs text-primary-600 underline"
-                  type="button"
-                  @click="openEditModal(event)"
-                >
-                  Editar
-                </button>
-                <button
-                  v-if="event.status === 'confirmado' && !event.paciente_id"
-                  class="text-xs text-primary-600 underline"
-                  type="button"
-                  @click="openPatientModal(event)"
-                >
-                  Cadastrar paciente
-                </button>
-              </div>
-            </li>
-          </ul>
+                </div>
+                <div class="flex items-center justify-end gap-2">
+                  <button
+                    v-if="event.status === 'agendado'"
+                    class="text-[11px] text-primary-600 hover:text-primary-700 underline"
+                    type="button"
+                    @click="confirmEvent(event)"
+                  >
+                    Confirmar
+                  </button>
+                  <button
+                    class="inline-flex items-center justify-center h-7 w-7 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"
+                    type="button"
+                    @click="openEditModal(event)"
+                  >
+                    <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                  </button>
+                  <button
+                    v-if="event.status === 'confirmado' && !event.paciente_id"
+                    class="text-[11px] text-primary-600 hover:text-primary-700 underline"
+                    type="button"
+                    @click="openPatientModal(event)"
+                  >
+                    Cadastrar paciente
+                  </button>
+                </div>
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
