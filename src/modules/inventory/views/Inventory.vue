@@ -13,6 +13,15 @@ type ProdutoEstoque = {
   quantidadeMinima: number | null
 }
 
+type MovimentoEstoque = {
+  id: string
+  tipo: 'entrada' | 'saida'
+  quantidade: number
+  motivo: string | null
+  criadoEm: string
+  produtoNome: string
+}
+
 const auth = useAuthStore()
 const feedback = useFeedbackStore()
 
@@ -21,7 +30,15 @@ const isLoading = ref(false)
 const isSaving = ref(false)
 const isSavingMovimento = ref(false)
 const produtos = ref<ProdutoEstoque[]>([])
+const movimentos = ref<MovimentoEstoque[]>([])
 const filtroBuscar = ref('')
+const filtroTipoMov = ref<'todos' | 'entrada' | 'saida'>('todos')
+const filtroDataIni = ref('')
+const filtroDataFim = ref('')
+
+const activeTab = ref<'overview' | 'stock' | 'movements' | 'history'>(
+  'overview',
+)
 
 const isModalAberto = ref(false)
 const editandoProdutoId = ref<string | null>(null)
@@ -47,6 +64,40 @@ const produtosFiltrados = computed(() => {
   return produtos.value.filter((p) =>
     p.nome.toLowerCase().includes(term),
   )
+})
+
+const lowStockProdutos = computed(() =>
+  produtos.value.filter(
+    (p) =>
+      p.quantidadeMinima !== null &&
+      p.quantidadeMinima !== undefined &&
+      p.quantidadeAtual <= p.quantidadeMinima,
+  ),
+)
+
+const totalProdutos = computed(() => produtos.value.length)
+const totalItensEstoque = computed(() =>
+  produtos.value.reduce((acc, p) => acc + (p.quantidadeAtual || 0), 0),
+)
+
+const movimentosFiltrados = computed(() => {
+  let list = movimentos.value
+
+  if (filtroTipoMov.value !== 'todos') {
+    list = list.filter((m) => m.tipo === filtroTipoMov.value)
+  }
+
+  if (filtroDataIni.value) {
+    const ini = new Date(filtroDataIni.value + 'T00:00:00').getTime()
+    list = list.filter((m) => new Date(m.criadoEm).getTime() >= ini)
+  }
+
+  if (filtroDataFim.value) {
+    const fim = new Date(filtroDataFim.value + 'T23:59:59').getTime()
+    list = list.filter((m) => new Date(m.criadoEm).getTime() <= fim)
+  }
+
+  return list
 })
 
 async function loadEstabelecimento() {
@@ -106,17 +157,55 @@ async function loadProdutos() {
     }
 
     produtos.value =
-      data?.map((p: any) => ({
-        id: p.id,
-        nome: p.nome,
-        descricao: p.descricao ?? null,
-        unidade: p.unidade ?? null,
-        quantidadeAtual: p.quantidade_atual ?? 0,
-        quantidadeMinima: p.quantidade_minima ?? null,
+      (data ?? []).map((p) => ({
+        id: p.id as string,
+        nome: p.nome as string,
+        descricao: (p as { descricao?: string | null }).descricao ?? null,
+        unidade: (p as { unidade?: string | null }).unidade ?? null,
+        quantidadeAtual:
+          (p as { quantidade_atual?: number | null }).quantidade_atual ?? 0,
+        quantidadeMinima:
+          (p as { quantidade_minima?: number | null }).quantidade_minima ??
+          null,
       })) ?? []
   } finally {
     isLoading.value = false
   }
+}
+
+async function loadMovimentos() {
+  if (!estabelecimentoId.value) return
+
+  const { data, error } = await supabase
+    .from('movimento_estoque')
+    .select(
+      `
+      id,
+      tipo,
+      quantidade,
+      motivo,
+      created_at,
+      produto:estoque_produto ( nome )
+    `,
+    )
+    .eq('estabelecimento_id', estabelecimentoId.value)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  movimentos.value =
+    (data ?? []).map((m) => ({
+      id: m.id as string,
+      tipo: m.tipo as 'entrada' | 'saida',
+      quantidade: m.quantidade as number,
+      motivo: (m as { motivo?: string | null }).motivo ?? null,
+      criadoEm: m.created_at as string,
+      produtoNome: (m as { produto?: { nome?: string | null } }).produto
+        ?.nome ?? 'Produto',
+    })) ?? []
 }
 
 function abrirNovoProduto() {
@@ -222,10 +311,6 @@ function abrirMovimento(produto: ProdutoEstoque, tipo: 'entrada' | 'saida') {
   movimentoForm.motivo = ''
 }
 
-const produtoSelecionadoMovimento = computed(() =>
-  produtos.value.find((p) => p.id === movimentoForm.produtoId) ?? null,
-)
-
 async function salvarMovimento() {
   if (!estabelecimentoId.value || !movimentoForm.produtoId) return
   if (!movimentoForm.quantidade || movimentoForm.quantidade <= 0) {
@@ -282,6 +367,7 @@ async function salvarMovimento() {
     feedback.success('Movimento de estoque registrado com sucesso.')
     movimentoForm.produtoId = ''
     await loadProdutos()
+    await loadMovimentos()
   } finally {
     isSavingMovimento.value = false
   }
@@ -291,6 +377,7 @@ onMounted(async () => {
   await loadEstabelecimento()
   if (!estabelecimentoId.value) return
   await loadProdutos()
+  await loadMovimentos()
 })
 </script>
 
@@ -317,187 +404,469 @@ onMounted(async () => {
       v-else
       class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4"
     >
-      <div class="flex flex-col md:flex-row md:items-center md:gap-3">
-        <div class="flex-1">
-          <input
-            v-model="filtroBuscar"
-            class="form-input text-xs w-full md:w-72"
-            placeholder="Buscar por nome do produto"
-            type="text"
-          />
+      <!-- Tabs -->
+      <div class="flex flex-wrap gap-2 text-xs mb-2">
+        <button
+          class="px-3 py-1.5 rounded-full border"
+          :class="
+            activeTab === 'overview'
+              ? 'bg-primary-50 border-primary-600 text-primary-700'
+              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+          "
+          type="button"
+          @click="activeTab = 'overview'"
+        >
+          Visão geral
+        </button>
+        <button
+          class="px-3 py-1.5 rounded-full border"
+          :class="
+            activeTab === 'stock'
+              ? 'bg-primary-50 border-primary-600 text-primary-700'
+              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+          "
+          type="button"
+          @click="activeTab = 'stock'"
+        >
+          Estoque
+        </button>
+        <button
+          class="px-3 py-1.5 rounded-full border"
+          :class="
+            activeTab === 'movements'
+              ? 'bg-primary-50 border-primary-600 text-primary-700'
+              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+          "
+          type="button"
+          @click="activeTab = 'movements'"
+        >
+          Movimentação
+        </button>
+        <button
+          class="px-3 py-1.5 rounded-full border"
+          :class="
+            activeTab === 'history'
+              ? 'bg-primary-50 border-primary-600 text-primary-700'
+              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+          "
+          type="button"
+          @click="activeTab = 'history'"
+        >
+          Histórico
+        </button>
+      </div>
+
+      <!-- Overview -->
+      <div v-if="activeTab === 'overview'" class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+            <p class="text-[11px] text-gray-500">
+              Produtos cadastrados
+            </p>
+            <p class="mt-1 text-xl font-semibold text-primary-700">
+              {{ totalProdutos }}
+            </p>
+          </div>
+          <div class="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+            <p class="text-[11px] text-gray-500">
+              Itens em estoque
+            </p>
+            <p class="mt-1 text-xl font-semibold text-primary-700">
+              {{ totalItensEstoque }}
+            </p>
+          </div>
+          <div class="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+            <p class="text-[11px] text-gray-500">
+              Produtos abaixo do mínimo
+            </p>
+            <p class="mt-1 text-xl font-semibold" :class="lowStockProdutos.length ? 'text-red-600' : 'text-primary-700'">
+              {{ lowStockProdutos.length }}
+            </p>
+          </div>
         </div>
-        <div class="mt-2 md:mt-0 md:ml-3">
+
+        <div class="border border-gray-100 rounded-lg overflow-hidden">
+          <div
+            class="hidden md:grid grid-cols-[1.4fr,0.6fr,0.6fr,0.6fr,0.8fr] bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 px-3 py-2"
+          >
+            <span>Produto</span>
+            <span>Unidade</span>
+            <span class="text-right">
+              Qtde atual
+            </span>
+            <span class="text-right">
+              Qtde mínima
+            </span>
+            <span class="text-right">
+              Ações
+            </span>
+          </div>
+          <ul class="divide-y divide-gray-100">
+            <li
+              v-for="produto in produtosFiltrados"
+              :key="produto.id"
+              class="px-3 py-2 text-xs md:text-sm flex flex-col md:grid md:grid-cols-[1.4fr,0.6fr,0.6fr,0.6fr,0.8fr] md:items-center gap-1 md:gap-3"
+            >
+              <div>
+                <p class="font-medium text-gray-800">
+                  {{ produto.nome }}
+                </p>
+                <p v-if="produto.descricao" class="text-[11px] text-gray-500">
+                  {{ produto.descricao }}
+                </p>
+              </div>
+              <div class="text-xs text-gray-700">
+                {{ produto.unidade || '-' }}
+              </div>
+              <div
+                class="text-xs font-semibold text-right"
+                :class="[
+                  produto.quantidadeMinima !== null &&
+                  produto.quantidadeAtual <= produto.quantidadeMinima
+                    ? 'text-red-600'
+                    : 'text-gray-800',
+                ]"
+              >
+                {{ produto.quantidadeAtual }}
+              </div>
+              <div class="text-xs text-right text-gray-500">
+                {{ produto.quantidadeMinima ?? '-' }}
+              </div>
+              <div class="flex items-center justify-end gap-2">
+                <button
+                  class="text-[11px] text-primary-600 hover:text-primary-700 underline"
+                  type="button"
+                  @click="abrirMovimento(produto, 'saida'); activeTab = 'movements'"
+                >
+                  Registrar uso
+                </button>
+                <button
+                  class="text-[11px] text-primary-600 hover:text-primary-700 underline"
+                  type="button"
+                  @click="abrirMovimento(produto, 'entrada'); activeTab = 'movements'"
+                >
+                  Entrada
+                </button>
+                <button
+                  class="inline-flex items-center justify-center h-7 w-7 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"
+                  type="button"
+                  @click="abrirEditarProduto(produto)"
+                >
+                  <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                </button>
+                <button
+                  class="inline-flex items-center justify-center h-7 w-7 rounded-md border border-red-100 text-red-600 hover:bg-red-50"
+                  type="button"
+                  @click="deletarProduto(produto)"
+                >
+                  <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                </button>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Stock -->
+      <div v-if="activeTab === 'stock'" class="space-y-4">
+        <div class="flex flex-col md:flex-row md:items-center md:gap-3">
+          <div class="flex-1">
+            <input
+              v-model="filtroBuscar"
+              class="form-input text-xs w-full md:w-72"
+              placeholder="Buscar por nome do produto"
+              type="text"
+            />
+          </div>
+          <div class="mt-2 md:mt-0 md:ml-3">
+            <button
+              class="btn-primary text-[11px] px-3 py-1.5"
+              type="button"
+              @click="abrirNovoProduto"
+            >
+              + Novo produto
+            </button>
+          </div>
+        </div>
+
+        <div v-if="isLoading" class="text-xs text-gray-400">
+          Carregando estoque...
+        </div>
+        <div
+          v-else-if="!produtosFiltrados.length"
+          class="text-sm text-gray-500"
+        >
+          Nenhum produto cadastrado no estoque.
           <button
-            class="btn-primary text-[11px] px-3 py-1.5"
+            class="ml-1 text-primary-600 underline text-xs"
             type="button"
             @click="abrirNovoProduto"
           >
-            + Novo produto
+            Cadastrar primeiro produto
           </button>
         </div>
-      </div>
-
-      <div v-if="isLoading" class="text-xs text-gray-400">
-        Carregando estoque...
-      </div>
-      <div v-else-if="!produtosFiltrados.length" class="text-sm text-gray-500">
-        Nenhum produto cadastrado no estoque.
-        <button
-          class="ml-1 text-primary-600 underline text-xs"
-          type="button"
-          @click="abrirNovoProduto"
-        >
-          Cadastrar primeiro produto
-        </button>
-      </div>
-      <div v-else class="border border-gray-100 rounded-lg overflow-hidden">
-        <div
-          class="hidden md:grid grid-cols-[1.4fr,0.6fr,0.6fr,0.6fr,0.8fr] bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 px-3 py-2"
-        >
-          <span>Produto</span>
-          <span>Unidade</span>
-          <span class="text-right">
-            Qtde atual
-          </span>
-          <span class="text-right">
-            Qtde mínima
-          </span>
-          <span class="text-right">
-            Ações
-          </span>
-        </div>
-        <ul class="divide-y divide-gray-100">
-          <li
-            v-for="produto in produtosFiltrados"
-            :key="produto.id"
-            class="px-3 py-2 text-xs md:text-sm flex flex-col md:grid md:grid-cols-[1.4fr,0.6fr,0.6fr,0.6fr,0.8fr] md:items-center gap-1 md:gap-3"
+        <div v-else class="border border-gray-100 rounded-lg overflow-hidden">
+          <div
+            class="hidden md:grid grid-cols-[1.4fr,0.6fr,0.6fr,0.6fr,0.8fr] bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 px-3 py-2"
           >
-            <div>
-              <p class="font-medium text-gray-800">
-                {{ produto.nome }}
-              </p>
-              <p v-if="produto.descricao" class="text-[11px] text-gray-500">
-                {{ produto.descricao }}
-              </p>
-            </div>
-            <div class="text-xs text-gray-700">
-              {{ produto.unidade || '-' }}
-            </div>
-            <div
-              class="text-xs font-semibold text-right"
-              :class="[
-                produto.quantidadeMinima !== null &&
-                produto.quantidadeAtual <= produto.quantidadeMinima
-                  ? 'text-red-600'
-                  : 'text-gray-800',
-              ]"
+            <span>Produto</span>
+            <span>Unidade</span>
+            <span class="text-right">
+              Qtde atual
+            </span>
+            <span class="text-right">
+              Qtde mínima
+            </span>
+            <span class="text-right">
+              Ações
+            </span>
+          </div>
+          <ul class="divide-y divide-gray-100">
+            <li
+              v-for="produto in produtosFiltrados"
+              :key="produto.id"
+              class="px-3 py-2 text-xs md:text-sm flex flex-col md:grid md:grid-cols-[1.4fr,0.6fr,0.6fr,0.6fr,0.8fr] md:items-center gap-1 md:gap-3"
             >
-              {{ produto.quantidadeAtual }}
-            </div>
-            <div class="text-xs text-right text-gray-500">
-              {{ produto.quantidadeMinima ?? '-' }}
-            </div>
-            <div class="flex items-center justify-end gap-2">
-              <button
-                class="text-[11px] text-primary-600 hover:text-primary-700 underline"
-                type="button"
-                @click="abrirMovimento(produto, 'saida')"
+              <div>
+                <p class="font-medium text-gray-800">
+                  {{ produto.nome }}
+                </p>
+                <p v-if="produto.descricao" class="text-[11px] text-gray-500">
+                  {{ produto.descricao }}
+                </p>
+              </div>
+              <div class="text-xs text-gray-700">
+                {{ produto.unidade || '-' }}
+              </div>
+              <div
+                class="text-xs font-semibold text-right"
+                :class="[
+                  produto.quantidadeMinima !== null &&
+                  produto.quantidadeAtual <= produto.quantidadeMinima
+                    ? 'text-red-600'
+                    : 'text-gray-800',
+                ]"
               >
-                Registrar uso
-              </button>
-              <button
-                class="text-[11px] text-primary-600 hover:text-primary-700 underline"
-                type="button"
-                @click="abrirMovimento(produto, 'entrada')"
-              >
-                Entrada
-              </button>
-              <button
-                class="inline-flex items-center justify-center h-7 w-7 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"
-                type="button"
-                @click="abrirEditarProduto(produto)"
-              >
-                <i class="fa-solid fa-pen" aria-hidden="true"></i>
-              </button>
-              <button
-                class="inline-flex items-center justify-center h-7 w-7 rounded-md border border-red-100 text-red-600 hover:bg-red-50"
-                type="button"
-                @click="deletarProduto(produto)"
-              >
-                <i class="fa-solid fa-trash" aria-hidden="true"></i>
-              </button>
-            </div>
-          </li>
-        </ul>
+                {{ produto.quantidadeAtual }}
+              </div>
+              <div class="text-xs text-right text-gray-500">
+                {{ produto.quantidadeMinima ?? '-' }}
+              </div>
+              <div class="flex items-center justify-end gap-2">
+                <button
+                  class="text-[11px] text-primary-600 hover:text-primary-700 underline"
+                  type="button"
+                  @click="abrirMovimento(produto, 'saida'); activeTab = 'movements'"
+                >
+                  Registrar uso
+                </button>
+                <button
+                  class="text-[11px] text-primary-600 hover:text-primary-700 underline"
+                  type="button"
+                  @click="abrirMovimento(produto, 'entrada'); activeTab = 'movements'"
+                >
+                  Entrada
+                </button>
+                <button
+                  class="inline-flex items-center justify-center h-7 w-7 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"
+                  type="button"
+                  @click="abrirEditarProduto(produto)"
+                >
+                  <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                </button>
+                <button
+                  class="inline-flex items-center justify-center h-7 w-7 rounded-md border border-red-100 text-red-600 hover:bg-red-50"
+                  type="button"
+                  @click="deletarProduto(produto)"
+                >
+                  <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                </button>
+              </div>
+            </li>
+          </ul>
+        </div>
       </div>
 
-      <div
-        v-if="movimentoForm.produtoId && produtoSelecionadoMovimento"
-        class="mt-4 border-t border-gray-100 pt-4"
-      >
-        <h3 class="text-xs font-semibold text-primary-700 mb-2">
-          Registrar movimento de estoque
-        </h3>
-        <div class="text-[11px] text-gray-600 mb-2">
-          Produto:
-          <span class="font-semibold">
-            {{ produtoSelecionadoMovimento.nome }}
-          </span>
-          · Quantidade atual:
-          <span class="font-semibold">
-            {{ produtoSelecionadoMovimento.quantidadeAtual }}
-          </span>
-        </div>
-        <form
-          class="grid grid-cols-1 md:grid-cols-[0.6fr,0.6fr,1.2fr,auto] gap-3 items-end"
-          @submit.prevent="salvarMovimento"
-        >
-          <div>
+      <!-- Movements -->
+      <div v-if="activeTab === 'movements'" class="space-y-4">
+        <div class="flex flex-col md:flex-row md:items-end md:gap-3">
+          <div class="flex-1">
             <label class="block text-[11px] font-semibold text-gray-700 mb-1">
+              Produto
+            </label>
+            <select
+              v-model="movimentoForm.produtoId"
+              class="form-input text-xs w-full"
+            >
+              <option value="">
+                Selecione um produto
+              </option>
+              <option
+                v-for="produto in produtos"
+                :key="produto.id"
+                :value="produto.id"
+              >
+                {{ produto.nome }}
+              </option>
+            </select>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3 md:mt-0 md:flex-1">
+            <div>
+              <label class="block text-[11px] font-semibold text-gray-700 mb-1">
+                Tipo
+              </label>
+              <select
+                v-model="movimentoForm.tipo"
+                class="form-input text-xs"
+              >
+                <option value="saida">
+                  Saída (uso)
+                </option>
+                <option value="entrada">
+                  Entrada
+                </option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-gray-700 mb-1">
+                Quantidade
+              </label>
+              <input
+                v-model.number="movimentoForm.quantidade"
+                class="form-input text-xs"
+                min="1"
+                type="number"
+              />
+            </div>
+            <div class="col-span-2 md:col-span-1">
+              <label class="block text-[11px] font-semibold text-gray-700 mb-1">
+                Motivo / Observação
+              </label>
+              <input
+                v-model="movimentoForm.motivo"
+                class="form-input text-xs"
+                placeholder="Ex.: uso em procedimento, reposição de estoque..."
+                type="text"
+              />
+            </div>
+          </div>
+          <div class="mt-3 md:mt-0">
+            <button
+              class="btn-primary text-xs py-2 px-4 disabled:opacity-60 disabled:cursor-not-allowed"
+              :disabled="isSavingMovimento"
+              type="button"
+              @click="salvarMovimento"
+            >
+              {{ isSavingMovimento ? 'Salvando...' : 'Registrar movimento' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="text-[11px] text-gray-500">
+          Dica: use esta seção para registrar rapidamente o uso dos materiais e as entradas de reposição.
+        </div>
+      </div>
+
+      <!-- History -->
+      <div v-if="activeTab === 'history'" class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-[11px]">
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">
               Tipo
             </label>
             <select
-              v-model="movimentoForm.tipo"
+              v-model="filtroTipoMov"
               class="form-input text-xs"
             >
-              <option value="saida">
-                Saída (uso)
+              <option value="todos">
+                Todos
               </option>
               <option value="entrada">
-                Entrada
+                Entradas
+              </option>
+              <option value="saida">
+                Saídas
               </option>
             </select>
           </div>
           <div>
-            <label class="block text-[11px] font-semibold text-gray-700 mb-1">
-              Quantidade
+            <label class="block font-semibold text-gray-700 mb-1">
+              Data inicial
             </label>
             <input
-              v-model.number="movimentoForm.quantidade"
+              v-model="filtroDataIni"
               class="form-input text-xs"
-              min="1"
-              type="number"
+              type="date"
             />
           </div>
           <div>
-            <label class="block text-[11px] font-semibold text-gray-700 mb-1">
-              Motivo / Observação
+            <label class="block font-semibold text-gray-700 mb-1">
+              Data final
             </label>
             <input
-              v-model="movimentoForm.motivo"
+              v-model="filtroDataFim"
               class="form-input text-xs"
-              placeholder="Ex.: uso em procedimento, reposição de estoque..."
-              type="text"
+              type="date"
             />
           </div>
-          <button
-            class="btn-primary text-xs py-2 disabled:opacity-60 disabled:cursor-not-allowed"
-            :disabled="isSavingMovimento"
-            type="submit"
+        </div>
+
+        <div class="border border-gray-100 rounded-lg overflow-hidden">
+          <div
+            class="hidden md:grid grid-cols-[0.9fr,0.9fr,0.8fr,0.6fr,1.2fr] bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 px-3 py-2"
           >
-            {{ isSavingMovimento ? 'Salvando...' : 'Registrar' }}
-          </button>
-        </form>
+            <span>Data</span>
+            <span>Produto</span>
+            <span>Tipo</span>
+            <span class="text-right">
+              Quantidade
+            </span>
+            <span>Motivo</span>
+          </div>
+          <ul class="divide-y divide-gray-100">
+            <li
+              v-for="mov in movimentosFiltrados"
+              :key="mov.id"
+              class="px-3 py-2 text-xs md:text-[13px] flex flex-col md:grid md:grid-cols-[0.9fr,0.9fr,0.8fr,0.6fr,1.2fr] md:items-center gap-1 md:gap-3"
+            >
+              <div class="text-gray-600">
+                {{
+                  new Date(mov.criadoEm).toLocaleString('pt-BR', {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  })
+                }}
+              </div>
+              <div class="font-medium text-gray-800">
+                {{ mov.produtoNome }}
+              </div>
+              <div>
+                <span
+                  class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
+                  :class="[
+                    mov.tipo === 'entrada'
+                      ? 'bg-green-50 text-green-700'
+                      : 'bg-red-50 text-red-700',
+                  ]"
+                >
+                  {{ mov.tipo === 'entrada' ? 'Entrada' : 'Saída' }}
+                </span>
+              </div>
+              <div class="text-right font-semibold text-gray-800">
+                {{ mov.quantidade }}
+              </div>
+              <div class="text-[11px] text-gray-600">
+                {{ mov.motivo || '-' }}
+              </div>
+            </li>
+            <li
+              v-if="!movimentosFiltrados.length"
+              class="px-3 py-3 text-xs text-gray-500"
+            >
+              Nenhuma movimentação encontrada para os filtros selecionados.
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
 

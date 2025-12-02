@@ -9,6 +9,7 @@ export type PermissionId =
   | 'profissionais'
   | 'permissoes'
   | 'estoque'
+  | 'orcamentos'
   | 'config_estabelecimento'
 
 export type PermissionDef = {
@@ -27,6 +28,7 @@ export const PERMISSIONS: PermissionDef[] = [
   { id: 'profissionais', label: 'Gestão de profissionais' },
   { id: 'permissoes', label: 'Gestão de permissões' },
   { id: 'estoque', label: 'Estoque' },
+  { id: 'orcamentos', label: 'Orçamentos cirúrgicos' },
   { id: 'config_estabelecimento', label: 'Configurações do estabelecimento' },
 ]
 
@@ -41,6 +43,7 @@ export const ROUTE_PERMISSIONS: Record<string, PermissionId | null> = {
   'professionals-management': 'profissionais',
   'permissions-management': 'permissoes',
   'inventory-management': 'estoque',
+  'budgets-management': 'orcamentos',
   'establishment-settings': 'config_estabelecimento',
 }
 

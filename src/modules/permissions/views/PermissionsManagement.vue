@@ -89,6 +89,7 @@ async function ensureDefaultModels() {
         'prontuario',
         'profissionais',
         'permissoes',
+        'orcamentos',
         'estoque',
         'config_estabelecimento',
       ],
