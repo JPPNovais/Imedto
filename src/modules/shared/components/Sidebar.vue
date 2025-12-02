@@ -89,6 +89,17 @@
             <span>Pacientes</span>
           </RouterLink>
           <RouterLink
+            v-if="permissionsStore.hasPermission('estoque')"
+            class="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-white/10"
+            active-class="bg-white/15"
+            to="/estoque"
+          >
+            <span class="w-5 text-center">
+              <i class="fa-solid fa-boxes-stacked text-white" aria-hidden="true"></i>
+            </span>
+            <span>Estoque</span>
+          </RouterLink>
+          <RouterLink
             class="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-white/10"
             active-class="bg-white/15"
             to="/perfil-profissional"

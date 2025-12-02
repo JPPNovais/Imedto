@@ -8,6 +8,7 @@ export type PermissionId =
   | 'perfil_profissional'
   | 'profissionais'
   | 'permissoes'
+  | 'estoque'
   | 'config_estabelecimento'
 
 export type PermissionDef = {
@@ -25,6 +26,7 @@ export const PERMISSIONS: PermissionDef[] = [
   { id: 'perfil_profissional', label: 'Meu cadastro profissional' },
   { id: 'profissionais', label: 'Gestão de profissionais' },
   { id: 'permissoes', label: 'Gestão de permissões' },
+  { id: 'estoque', label: 'Estoque' },
   { id: 'config_estabelecimento', label: 'Configurações do estabelecimento' },
 ]
 
@@ -38,10 +40,10 @@ export const ROUTE_PERMISSIONS: Record<string, PermissionId | null> = {
   'professional-profile': null,
   'professionals-management': 'profissionais',
   'permissions-management': 'permissoes',
+  'inventory-management': 'estoque',
   'establishment-settings': 'config_estabelecimento',
 }
 
 export function permissionLabel(id: string): string {
   return PERMISSIONS.find((p) => p.id === id)?.label ?? id
 }
-

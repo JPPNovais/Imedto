@@ -83,7 +83,15 @@ async function ensureDefaultModels() {
   const defaults = [
     {
       nome: 'Admin',
-      permissoes: ['agenda', 'pacientes', 'prontuario', 'profissionais', 'config_estabelecimento'],
+      permissoes: [
+        'agenda',
+        'pacientes',
+        'prontuario',
+        'profissionais',
+        'permissoes',
+        'estoque',
+        'config_estabelecimento',
+      ],
     },
     {
       nome: 'Médico',
@@ -91,7 +99,7 @@ async function ensureDefaultModels() {
     },
     {
       nome: 'Recepção',
-      permissoes: ['agenda', 'pacientes'],
+      permissoes: ['agenda', 'pacientes', 'estoque'],
     },
   ]
 

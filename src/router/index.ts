@@ -24,6 +24,7 @@ import PatientsList from '@/modules/patients/views/PatientsList.vue'
 import MedicalRecord from '@/modules/medical-record/views/MedicalRecord.vue'
 import MedicalRecordModels from '@/modules/medical-record/views/MedicalRecordModels.vue'
 import MedicalWorklist from '@/modules/medical-record/views/MedicalWorklist.vue'
+import Inventory from '@/modules/inventory/views/Inventory.vue'
 
 const ifNotAuthenticated = (
   to: RouteLocationNormalized | undefined,
@@ -137,6 +138,11 @@ const router = createRouter({
           path: 'permissoes',
           name: 'permissions-management',
           component: PermissionsManagement,
+        },
+        {
+          path: 'estoque',
+          name: 'inventory-management',
+          component: Inventory,
         },
         {
           path: 'modelos-prontuario',
