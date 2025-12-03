@@ -60,6 +60,13 @@ const historiaPregressa = reactive({
   usoMedicamentosDescricao: '',
   cirurgiasAnteriores: '' as '' | 'sim' | 'nao',
   cirurgiasDescricao: '',
+   cirurgiasDetalhadas: [
+    {
+      cirurgia: '',
+      ano: '',
+      observacao: '',
+    },
+  ] as { cirurgia: string; ano: string; observacao: string }[],
   doencasPrevias: '' as '' | 'sim' | 'nao',
   doencasDescricao: '',
   tipoCicatrizacaoNivel: '',
@@ -73,6 +80,220 @@ const historiaPregressa = reactive({
   gestacaoGpa: '',
   observacoes: '',
 })
+
+const alergiasDefault = [
+  'Dipirona',
+  'AAS (Ácido acetilsalicílico)',
+  'Ibuprofeno',
+  'Diclofenaco',
+  'Penicilina',
+  'Amoxicilina',
+  'Cefalosporinas',
+  'Quinolonas',
+  'Contraste iodado',
+  'Látex',
+  'Anestésicos locais',
+]
+
+const alergiasPool = ref<string[]>([...alergiasDefault])
+
+const cirurgiasDefault = [
+  'Apendicectomia',
+  'Colecistectomia',
+  'Cesárea',
+  'Histerectomia',
+  'Cirurgia bariátrica',
+  'Herniorrafia inguinal',
+  'Artroplastia de quadril/joelho',
+]
+
+const cirurgiasPool = ref<string[]>([...cirurgiasDefault])
+
+const isAlergiaModalOpen = ref(false)
+const alergiaModalNome = ref('')
+const alergiaModalIndex = ref<number | null>(null)
+
+const isCirurgiaModalOpen = ref(false)
+const cirurgiaModalNome = ref('')
+const cirurgiaModalIndex = ref<number | null>(null)
+
+async function loadAlergiasPool() {
+  const filtros = supabase
+    .from('prontuario_variaveis_pool')
+    .select('nome, estabelecimento_id')
+    .eq('tipo', 'alergia')
+
+  if (estabelecimentoId.value) {
+    filtros.or(
+      `estabelecimento_id.is.null,estabelecimento_id.eq.${estabelecimentoId.value}`,
+    )
+  } else {
+    filtros.is('estabelecimento_id', null)
+  }
+
+  const { data, error } = await filtros.order('nome')
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  const nomes = (data ?? []).map((row: { nome: string }) => row.nome)
+  const set = new Set(alergiasDefault)
+  nomes.forEach((n) => {
+    if (n && !set.has(n)) {
+      set.add(n)
+    }
+  })
+  alergiasPool.value = Array.from(set)
+}
+
+async function loadCirurgiasPool() {
+  const filtros = supabase
+    .from('prontuario_variaveis_pool')
+    .select('nome, estabelecimento_id')
+    .eq('tipo', 'cirurgia_pregressa')
+
+  if (estabelecimentoId.value) {
+    filtros.or(
+      `estabelecimento_id.is.null,estabelecimento_id.eq.${estabelecimentoId.value}`,
+    )
+  } else {
+    filtros.is('estabelecimento_id', null)
+  }
+
+  const { data, error } = await filtros.order('nome')
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  const nomes = (data ?? []).map((row: { nome: string }) => row.nome)
+  const set = new Set(cirurgiasDefault)
+  nomes.forEach((n) => {
+    if (n && !set.has(n)) {
+      set.add(n)
+    }
+  })
+  cirurgiasPool.value = Array.from(set)
+}
+
+async function adicionarAlergiaAoPool(novaAlergia: string) {
+  if (!estabelecimentoId.value) return
+  const nome = novaAlergia.trim()
+  if (!nome) return
+
+  if (alergiasPool.value.includes(nome)) return
+
+  alergiasPool.value = [...alergiasPool.value, nome].sort((a, b) =>
+    a.localeCompare(b, 'pt-BR'),
+  )
+
+  const { error } = await supabase.from('prontuario_variaveis_pool').insert({
+    estabelecimento_id: estabelecimentoId.value,
+    tipo: 'alergia',
+    nome,
+  })
+
+  if (error) {
+    console.error(error)
+    feedback.error('Não foi possível salvar a nova alergia.')
+  }
+}
+
+async function adicionarCirurgiaAoPool(novaCirurgia: string) {
+  if (!estabelecimentoId.value) return
+  const nome = novaCirurgia.trim()
+  if (!nome) return
+
+  if (cirurgiasPool.value.includes(nome)) return
+
+  cirurgiasPool.value = [...cirurgiasPool.value, nome].sort((a, b) =>
+    a.localeCompare(b, 'pt-BR'),
+  )
+
+  const { error } = await supabase.from('prontuario_variaveis_pool').insert({
+    estabelecimento_id: estabelecimentoId.value,
+    tipo: 'cirurgia_pregressa',
+    nome,
+  })
+
+  if (error) {
+    console.error(error)
+    feedback.error('Não foi possível salvar a nova cirurgia.')
+  }
+}
+
+function onAlergiaSelectChange(event: Event, index: number) {
+  const target = event.target as HTMLSelectElement | null
+  if (!target) return
+  const value = target.value
+
+  if (value === '__outra__') {
+    alergiaModalIndex.value = index
+    alergiaModalNome.value = ''
+    isAlergiaModalOpen.value = true
+    historiaPregressa.alergiasDetalhadas[index].alergia = ''
+  } else {
+    historiaPregressa.alergiasDetalhadas[index].alergia = value
+  }
+}
+
+function onCirurgiaSelectChange(event: Event, index: number) {
+  const target = event.target as HTMLSelectElement | null
+  if (!target) return
+  const value = target.value
+
+  if (value === '__outra__') {
+    cirurgiaModalIndex.value = index
+    cirurgiaModalNome.value = ''
+    isCirurgiaModalOpen.value = true
+    historiaPregressa.cirurgiasDetalhadas[index].cirurgia = ''
+  } else {
+    historiaPregressa.cirurgiasDetalhadas[index].cirurgia = value
+  }
+}
+
+async function salvarNovaAlergia() {
+  if (alergiaModalIndex.value === null) return
+  const nome = alergiaModalNome.value.trim()
+  if (!nome) return
+
+  await adicionarAlergiaAoPool(nome)
+  historiaPregressa.alergiasDetalhadas[alergiaModalIndex.value].alergia =
+    nome
+
+  isAlergiaModalOpen.value = false
+  alergiaModalIndex.value = null
+  alergiaModalNome.value = ''
+}
+
+function fecharAlergiaModal() {
+  isAlergiaModalOpen.value = false
+  alergiaModalIndex.value = null
+  alergiaModalNome.value = ''
+}
+
+async function salvarNovaCirurgia() {
+  if (cirurgiaModalIndex.value === null) return
+  const nome = cirurgiaModalNome.value.trim()
+  if (!nome) return
+
+  await adicionarCirurgiaAoPool(nome)
+  historiaPregressa.cirurgiasDetalhadas[cirurgiaModalIndex.value].cirurgia =
+    nome
+
+  isCirurgiaModalOpen.value = false
+  cirurgiaModalIndex.value = null
+  cirurgiaModalNome.value = ''
+}
+
+function fecharCirurgiaModal() {
+  isCirurgiaModalOpen.value = false
+  cirurgiaModalIndex.value = null
+  cirurgiaModalNome.value = ''
+}
 
 const historiaFamiliar = reactive({
   historicoPai: '',
@@ -243,90 +464,91 @@ const secoesDictionary: Record<
   string,
   { key: string; label: string; placeholder: string }
 > = {
-  secao_queixa_principal: {
-    key: 'secao_queixa_principal',
-    label: 'Queixa principal',
+  queixa: {
+    key: 'queixa',
+    label: 'Queixa principal (QP)',
     placeholder: 'Descreva a queixa principal do paciente...',
   },
-  secao_historia_atual: {
-    key: 'secao_historia_atual',
-    label: 'História atual',
-    placeholder: 'Descreva a história atual da doença...',
+  hda: {
+    key: 'hda',
+    label: 'História da doença atual (HDA)',
+    placeholder: 'Detalhe a evolução da queixa, fatores relacionados, tentativas prévias...',
   },
-  secao_historia_pregressa: {
-    key: 'secao_historia_pregressa',
-    label: 'História pregressa',
+  hpp: {
+    key: 'hpp',
+    label: 'História pregressa (HPP)',
     placeholder: 'Antecedentes pessoais, doenças prévias, cirurgias...',
   },
-  secao_historia_familiar: {
-    key: 'secao_historia_familiar',
+  'h-familiar': {
+    key: 'h-familiar',
     label: 'História familiar',
     placeholder: 'Doenças familiares relevantes...',
   },
-  secao_historia_social: {
-    key: 'secao_historia_social',
-    label: 'História social',
+  'h-social': {
+    key: 'h-social',
+    label: 'História social e hábitos de vida',
     placeholder: 'Hábitos, profissão, uso de substâncias...',
   },
-  secao_exame_fisico: {
-    key: 'secao_exame_fisico',
-    label: 'Exame físico',
-    placeholder: 'Achados do exame físico...',
+  'exame-fisico': {
+    key: 'exame-fisico',
+    label: 'Exame físico e sinais vitais',
+    placeholder: 'Achados do exame físico e sinais vitais...',
   },
-  secao_evolucao: {
-    key: 'secao_evolucao',
-    label: 'Evolução',
-    placeholder: 'Descrição da evolução clínica...',
-  },
-  secao_exames_realizados: {
-    key: 'secao_exames_realizados',
+  'exames-realizados': {
+    key: 'exames-realizados',
     label: 'Exames realizados',
     placeholder: 'Exames complementares realizados e resultados...',
   },
-  secao_procedimentos_indicados: {
-    key: 'secao_procedimentos_indicados',
+  'procedimentos-indicados': {
+    key: 'procedimentos-indicados',
     label: 'Procedimentos indicados',
     placeholder: 'Procedimentos indicados ao paciente...',
   },
-  secao_evolucao_pre_operatoria: {
-    key: 'secao_evolucao_pre_operatoria',
-    label: 'Evolução pré-operatória',
-    placeholder: 'Registre a evolução pré-operatória...',
-  },
-  secao_evolucao_pos_operatoria: {
-    key: 'secao_evolucao_pos_operatoria',
+  'evolucao-pos-op': {
+    key: 'evolucao-pos-op',
     label: 'Evolução pós-operatória',
     placeholder: 'Registre a evolução pós-operatória...',
   },
-  secao_detalhes_da_cirurgia: {
-    key: 'secao_detalhes_da_cirurgia',
-    label: 'Informações da cirurgia realizada',
-    placeholder: 'Data, tipo de cirurgia, tempo cirúrgico...',
-  },
-  secao_descricao_cirurgica: {
-    key: 'secao_descricao_cirurgica',
+  'desc-cirurgica': {
+    key: 'desc-cirurgica',
     label: 'Descrição cirúrgica',
     placeholder: 'Descrição detalhada do ato cirúrgico...',
   },
-  secao_equipe: {
-    key: 'secao_equipe',
-    label: 'Equipe',
+  'equipe-cirurgica': {
+    key: 'equipe-cirurgica',
+    label: 'Equipe cirúrgica',
     placeholder: 'Equipe envolvida no procedimento...',
   },
-  secao_fotos_do_paciente: {
-    key: 'secao_fotos_do_paciente',
+  'fotos-paciente': {
+    key: 'fotos-paciente',
     label: 'Fotos do paciente',
     placeholder: 'Referência às fotos registradas do paciente...',
   },
-  secao_anexos: {
-    key: 'secao_anexos',
+  anexos: {
+    key: 'anexos',
     label: 'Anexos',
     placeholder: 'Documentos, laudos ou outros anexos importantes...',
   },
-  secao_conduta: {
-    key: 'secao_conduta',
+  cid10: {
+    key: 'cid10',
+    label: 'CID-10',
+    placeholder: 'Código e descrição CID-10 relevantes...',
+  },
+  conduta: {
+    key: 'conduta',
     label: 'Conduta',
     placeholder: 'Conduta proposta, orientações e plano terapêutico...',
+  },
+  prescricao: {
+    key: 'prescricao',
+    label: 'Prescrição',
+    placeholder:
+      '1) Medicamento - dose - via - frequência - duração. Use uma linha por item.',
+  },
+  encaminhamento: {
+    key: 'encaminhamento',
+    label: 'Encaminhamento',
+    placeholder: 'Especialidade e motivo do encaminhamento...',
   },
 }
 
@@ -534,18 +756,18 @@ async function salvarEvolucao() {
 
   const secoesPayload: Record<string, any> = {}
   activeSections.value.forEach((key) => {
-    if (key === 'secao_anexos') {
+    if (key === 'anexos') {
       secoesPayload[key] = {
         arquivos: anexos.value.map((a) => ({ nome: a.nome })),
       }
-    } else if (key === 'secao_historia_atual') {
+    } else if (key === 'hda') {
       secoesPayload[key] = {
         historico_queixa: historiaAtual.historicoQueixa || '',
         procedimentos: historiaAtual.procedimentos
           .map((p) => p.trim())
           .filter(Boolean),
       }
-    } else if (key === 'secao_historia_pregressa') {
+    } else if (key === 'hpp') {
       secoesPayload[key] = {
         texto_geral: historiaPregressa.textoGeral || '',
         alergia_possui: historiaPregressa.alergiaPossui || null,
@@ -558,6 +780,12 @@ async function salvarEvolucao() {
           historiaPregressa.usoMedicamentosDescricao || '',
         cirurgias_anteriores: historiaPregressa.cirurgiasAnteriores || null,
         cirurgias_descricao: historiaPregressa.cirurgiasDescricao || '',
+        cirurgias_detalhadas: historiaPregressa.cirurgiasDetalhadas.filter(
+          (item) =>
+            item.cirurgia.trim() ||
+            item.ano.trim() ||
+            item.observacao.trim(),
+        ),
         doencas_previas: historiaPregressa.doencasPrevias || null,
         doencas_descricao: historiaPregressa.doencasDescricao || '',
         tipo_cicatrizacao_nivel: historiaPregressa.tipoCicatrizacaoNivel || '',
@@ -573,7 +801,7 @@ async function salvarEvolucao() {
         gestacao_gpa: historiaPregressa.gestacaoGpa || '',
         observacoes: historiaPregressa.observacoes || '',
       }
-    } else if (key === 'secao_historia_familiar') {
+    } else if (key === 'h-familiar') {
       secoesPayload[key] = {
         historico_pai: historiaFamiliar.historicoPai || '',
         historico_mae: historiaFamiliar.historicoMae || '',
@@ -589,7 +817,7 @@ async function salvarEvolucao() {
           historiaFamiliar.historicoNivelDescricao || '',
         observacao: historiaFamiliar.observacao || '',
       }
-    } else if (key === 'secao_historia_social') {
+    } else if (key === 'h-social') {
       secoesPayload[key] = {
         tabagismo: historiaSocial.tabagismo || null,
         tabagismo_comentario: historiaSocial.tabagismoComentario || '',
@@ -602,7 +830,7 @@ async function salvarEvolucao() {
         atividade_fisica_comentario:
           historiaSocial.atividadeFisicaComentario || '',
       }
-    } else if (key === 'secao_exame_fisico') {
+    } else if (key === 'exame-fisico') {
       secoesPayload[key] = {
         peso: exameFisico.peso || '',
         altura: exameFisico.altura || '',
@@ -613,7 +841,7 @@ async function salvarEvolucao() {
         resumo_peso_altura_imc_ectoscopia:
           exameFisico.resumoPesoAlturaImcEctoscopia || '',
       }
-    } else if (key === 'secao_exames_realizados') {
+    } else if (key === 'exames-realizados') {
       secoesPayload[key] = {
         tipo_exame: examesRealizados.tipoExame || '',
         material_exame: examesRealizados.materialExame || '',
@@ -621,17 +849,17 @@ async function salvarEvolucao() {
         comentario_exame: examesRealizados.comentarioExame || '',
         anexos_imagem: examesRealizados.anexosImagem ?? [],
       }
-    } else if (key === 'secao_equipe') {
+    } else if (key === 'equipe-cirurgica') {
       secoesPayload[key] = {
         profissionais: equipe.profissionais.filter(
           (p) => p.profissional.trim() || p.comentario.trim(),
         ),
       }
-    } else if (key === 'secao_fotos_do_paciente') {
+    } else if (key === 'fotos-paciente') {
       secoesPayload[key] = {
         anexos: fotosPaciente.anexos ?? [],
       }
-    } else if (key === 'secao_evolucao_pos_operatoria') {
+    } else if (key === 'evolucao-pos-op') {
       secoesPayload[key] = {
         observacao: evolucaoPosOperatoria.observacao || '',
         evolucao_paciente: evolucaoPosOperatoria.evolucaoPaciente || null,
@@ -642,7 +870,7 @@ async function salvarEvolucao() {
           evolucaoPosOperatoria.orientacoesComentario || '',
         anexos_imagem: evolucaoPosOperatoria.anexosImagem ?? [],
       }
-    } else if (key === 'secao_descricao_cirurgica') {
+    } else if (key === 'desc-cirurgica') {
       secoesPayload[key] = {
         tipo_procedimento: descricaoCirurgica.tipoProcedimento || '',
         data_inicio_cirurgia: descricaoCirurgica.dataInicioCirurgia || '',
@@ -661,7 +889,7 @@ async function salvarEvolucao() {
             (p) => p.profissional.trim() || p.funcao.trim(),
           ) ?? [],
       }
-    } else if (key === 'secao_procedimentos_indicados') {
+    } else if (key === 'procedimentos-indicados') {
       secoesPayload[key] = {
         procedimentos:
           procedimentosIndicados.itens
@@ -722,6 +950,9 @@ async function salvarEvolucao() {
     historiaPregressa.usoMedicamentosDescricao = ''
     historiaPregressa.cirurgiasAnteriores = ''
     historiaPregressa.cirurgiasDescricao = ''
+    historiaPregressa.cirurgiasDetalhadas = [
+      { cirurgia: '', ano: '', observacao: '' },
+    ]
     historiaPregressa.doencasPrevias = ''
     historiaPregressa.doencasDescricao = ''
     historiaPregressa.tipoCicatrizacaoNivel = ''
@@ -826,6 +1057,8 @@ onMounted(async () => {
     if (!estabelecimentoId.value) return
     await loadProfissional()
     await loadModelos()
+    await loadAlergiasPool()
+    await loadCirurgiasPool()
     if (pacienteId.value) {
       await ensureProntuario()
       await loadEvolucoes()
@@ -923,11 +1156,11 @@ onMounted(async () => {
           v-for="secaoKey in activeSections"
           :key="secaoKey"
           class="border border-gray-100 rounded-lg p-4 bg-gray-50"
-          >
+        >
           <h3 class="text-sm font-semibold text-primary-700 mb-2">
-            {{ secoesDictionary[secaoKey].label }}
+            {{ secoesDictionary[secaoKey]?.label || secaoKey }}
           </h3>
-          <template v-if="secaoKey === 'secao_anexos'">
+          <template v-if="secaoKey === 'anexos'">
             <input
               type="file"
               multiple
@@ -960,7 +1193,7 @@ onMounted(async () => {
               </li>
             </ul>
           </template>
-          <template v-else-if="secaoKey === 'secao_historia_atual'">
+          <template v-else-if="secaoKey === 'hda'">
             <div class="space-y-4">
               <div>
                 <label class="block text-xs font-semibold text-gray-700 mb-1">
@@ -1001,7 +1234,7 @@ onMounted(async () => {
               </div>
             </div>
           </template>
-          <template v-else-if="secaoKey === 'secao_historia_familiar'">
+          <template v-else-if="secaoKey === 'h-familiar'">
             <div class="space-y-4">
               <div>
                 <label class="block text-xs font-semibold text-gray-700 mb-1">
@@ -1143,7 +1376,7 @@ onMounted(async () => {
               </div>
             </div>
           </template>
-          <template v-else-if="secaoKey === 'secao_historia_social'">
+          <template v-else-if="secaoKey === 'h-social'">
             <div class="space-y-3">
               <div class="grid grid-cols-1 md:grid-cols-[0.8fr,1.2fr] gap-3 items-center">
                 <div class="flex items-center gap-4 text-xs">
@@ -1274,7 +1507,7 @@ onMounted(async () => {
               </div>
             </div>
           </template>
-          <template v-else-if="secaoKey === 'secao_historia_pregressa'">
+          <template v-else-if="secaoKey === 'hpp'">
             <div class="space-y-4">
               <div>
                 <label class="block text-xs font-semibold text-gray-700 mb-1">
@@ -1288,39 +1521,34 @@ onMounted(async () => {
               </div>
 
               <div class="space-y-4">
-                <div class="grid grid-cols-1 md:grid-cols-[0.5fr,1.5fr] gap-3 items-center">
-                  <div class="flex items-center gap-4 text-xs">
-                    <span class="font-semibold text-gray-700">
-                      Alergia
-                    </span>
-                    <label class="inline-flex items-center gap-1">
-                      <input
-                        v-model="historiaPregressa.alergiaPossui"
-                        class="text-primary focus:ring-primary"
-                        type="radio"
-                        value="nao"
-                      />
-                      <span>Não</span>
-                    </label>
-                    <label class="inline-flex items-center gap-1">
-                      <input
-                        v-model="historiaPregressa.alergiaPossui"
-                        class="text-primary focus:ring-primary"
-                        type="radio"
-                        value="sim"
-                      />
-                      <span>Sim</span>
-                    </label>
-                  </div>
-                  <input
-                    v-model="historiaPregressa.alergiaDescricao"
-                    class="form-input text-xs"
-                    placeholder="Digite qual a(s) alergia(s)"
-                    type="text"
-                  />
+                <div class="flex items-center gap-4 text-xs">
+                  <span class="font-semibold text-gray-700">
+                    Alergia
+                  </span>
+                  <label class="inline-flex items-center gap-1">
+                    <input
+                      v-model="historiaPregressa.alergiaPossui"
+                      class="text-primary focus:ring-primary"
+                      type="radio"
+                      value="nao"
+                    />
+                    <span>Não</span>
+                  </label>
+                  <label class="inline-flex items-center gap-1">
+                    <input
+                      v-model="historiaPregressa.alergiaPossui"
+                      class="text-primary focus:ring-primary"
+                      type="radio"
+                      value="sim"
+                    />
+                    <span>Sim</span>
+                  </label>
                 </div>
 
-                <div class="space-y-2">
+                <div
+                  v-if="historiaPregressa.alergiaPossui === 'sim'"
+                  class="space-y-2"
+                >
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <label class="block text-[11px] font-semibold text-primary-700 mb-1">
@@ -1336,14 +1564,29 @@ onMounted(async () => {
                   <div
                     v-for="(item, index) in historiaPregressa.alergiasDetalhadas"
                     :key="index"
-                    class="grid grid-cols-[1.2fr,1.2fr,auto] gap-3 items-center"
+                    class="grid grid-cols-[1.4fr,1.4fr,auto] gap-3 items-center"
                   >
-                    <input
-                      v-model="item.alergia"
-                      class="form-input text-xs"
-                      placeholder="Informe a alergia"
-                      type="text"
-                    />
+                    <div class="flex gap-2">
+                      <select
+                        :value="item.alergia"
+                        class="form-input text-xs flex-1"
+                        @change="onAlergiaSelectChange($event, index)"
+                      >
+                        <option value="">
+                          Selecione a alergia
+                        </option>
+                        <option
+                          v-for="nome in alergiasPool"
+                          :key="nome"
+                          :value="nome"
+                        >
+                          {{ nome }}
+                        </option>
+                        <option value="__outra__">
+                          Outra (cadastrar nova...)
+                        </option>
+                      </select>
+                    </div>
                     <input
                       v-model="item.observacao"
                       class="form-input text-xs"
@@ -1430,12 +1673,92 @@ onMounted(async () => {
                       <span>Sim</span>
                     </label>
                   </div>
-                  <input
-                    v-model="historiaPregressa.cirurgiasDescricao"
-                    class="form-input text-xs"
-                    placeholder="Digite qual a(s) cirurgia(s) anterior(es)"
-                    type="text"
-                  />
+                </div>
+
+                <div
+                  v-if="historiaPregressa.cirurgiasAnteriores === 'sim'"
+                  class="space-y-2"
+                >
+                  <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label class="block text-[11px] font-semibold text-primary-700 mb-1">
+                        Cirurgia
+                      </label>
+                    </div>
+                    <div>
+                      <label class="block text-[11px] font-semibold text-primary-700 mb-1">
+                        Ano
+                      </label>
+                    </div>
+                    <div>
+                      <label class="block text-[11px] font-semibold text-primary-700 mb-1">
+                        Observações
+                      </label>
+                    </div>
+                  </div>
+                  <div
+                    v-for="(item, index) in historiaPregressa.cirurgiasDetalhadas"
+                    :key="index"
+                    class="grid grid-cols-[1.4fr,0.7fr,1.4fr,auto] gap-3 items-center"
+                  >
+                    <div class="flex gap-2">
+                      <select
+                        :value="item.cirurgia"
+                        class="form-input text-xs flex-1"
+                        @change="onCirurgiaSelectChange($event, index)"
+                      >
+                        <option value="">
+                          Selecione a cirurgia
+                        </option>
+                        <option
+                          v-for="nome in cirurgiasPool"
+                          :key="nome"
+                          :value="nome"
+                        >
+                          {{ nome }}
+                        </option>
+                        <option value="__outra__">
+                          Outra (cadastrar nova...)
+                        </option>
+                      </select>
+                    </div>
+                    <input
+                      v-model="item.ano"
+                      class="form-input text-xs"
+                      placeholder="Ano"
+                      type="number"
+                      min="1900"
+                      max="2100"
+                    />
+                    <input
+                      v-model="item.observacao"
+                      class="form-input text-xs"
+                      placeholder="Digite uma observação"
+                      type="text"
+                    />
+                    <button
+                      v-if="historiaPregressa.cirurgiasDetalhadas.length > 1"
+                      class="h-8 w-8 inline-flex items-center justify-center rounded-md border border-red-100 text-red-600 hover:bg-red-50"
+                      type="button"
+                      @click="historiaPregressa.cirurgiasDetalhadas.splice(index, 1)"
+                    >
+                      <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                    </button>
+                  </div>
+                  <button
+                    class="mt-1 inline-flex items-center gap-1 text-xs text-primary-700 font-semibold hover:underline"
+                    type="button"
+                    @click="
+                      historiaPregressa.cirurgiasDetalhadas.push({
+                        cirurgia: '',
+                        ano: '',
+                        observacao: '',
+                      })
+                    "
+                  >
+                    <span class="text-base leading-none">+</span>
+                    <span>Adicionar cirurgia</span>
+                  </button>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-[0.8fr,1.4fr] gap-3 items-center">
@@ -1510,38 +1833,6 @@ onMounted(async () => {
                   <p class="text-xs font-semibold text-gray-700">
                     Sexo
                   </p>
-
-                  <div class="grid grid-cols-1 md:grid-cols-[0.9fr,1.3fr] gap-3 items-center">
-                    <div class="flex items-center gap-4 text-xs">
-                      <span class="font-semibold text-gray-700">
-                        Doença(s) prévia(s)
-                      </span>
-                      <label class="inline-flex items-center gap-1">
-                        <input
-                          v-model="historiaPregressa.doencasPrevias"
-                          class="text-primary focus:ring-primary"
-                          type="radio"
-                          value="nao"
-                        />
-                        <span>Não</span>
-                      </label>
-                      <label class="inline-flex items-center gap-1">
-                        <input
-                          v-model="historiaPregressa.doencasPrevias"
-                          class="text-primary focus:ring-primary"
-                          type="radio"
-                          value="sim"
-                        />
-                        <span>Sim</span>
-                      </label>
-                    </div>
-                    <input
-                      v-model="historiaPregressa.doencasDescricao"
-                      class="form-input text-xs"
-                      placeholder="Digite qual(is) a(s) doença(s) prévia(s)"
-                      type="text"
-                    />
-                  </div>
 
                   <div class="grid grid-cols-1 md:grid-cols-[0.9fr,1.3fr] gap-3 items-center">
                     <div class="flex items-center gap-4 text-xs">
@@ -1665,7 +1956,7 @@ onMounted(async () => {
               </div>
             </div>
           </template>
-          <template v-else-if="secaoKey === 'secao_exame_fisico'">
+          <template v-else-if="secaoKey === 'exame-fisico'">
             <div class="space-y-4">
               <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
@@ -1755,7 +2046,7 @@ onMounted(async () => {
               </div>
             </div>
           </template>
-          <template v-else-if="secaoKey === 'secao_equipe'">
+          <template v-else-if="secaoKey === 'equipe-cirurgica'">
             <div class="space-y-3">
               <p class="text-xs font-semibold text-gray-700">
                 Profissionais
@@ -1820,7 +2111,7 @@ onMounted(async () => {
               </button>
             </div>
           </template>
-          <template v-else-if="secaoKey === 'secao_fotos_do_paciente'">
+          <template v-else-if="secaoKey === 'fotos-paciente'">
             <div class="space-y-3">
               <div>
                 <label class="block text-xs font-semibold text-gray-700 mb-1">
@@ -1888,7 +2179,7 @@ onMounted(async () => {
               </div>
             </div>
           </template>
-          <template v-else-if="secaoKey === 'secao_evolucao_pos_operatoria'">
+          <template v-else-if="secaoKey === 'evolucao-pos-op'">
             <div class="space-y-4">
               <div>
                 <textarea
@@ -2048,167 +2339,7 @@ onMounted(async () => {
               </div>
             </div>
           </template>
-          <template v-else-if="secaoKey === 'secao_evolucao_pre_operatoria'">
-            <div class="space-y-4">
-              <div>
-                <textarea
-                  v-model="evolucaoPosOperatoria.observacao"
-                  class="form-input text-xs min-h-[120px] resize-y"
-                  placeholder="Digite a observação"
-                />
-              </div>
-
-              <div class="grid grid-cols-1 md:grid-cols-[1.4fr,1.2fr] gap-3 items-center">
-                <div class="flex flex-wrap items-center gap-4 text-xs">
-                  <span class="font-semibold text-gray-700">
-                    Como está a evolução do paciente?
-                  </span>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="evolucaoPosOperatoria.evolucaoPaciente"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="otima"
-                    />
-                    <span>Ótima</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="evolucaoPosOperatoria.evolucaoPaciente"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="boa"
-                    />
-                    <span>Boa</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="evolucaoPosOperatoria.evolucaoPaciente"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="regular"
-                    />
-                    <span>Regular</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="evolucaoPosOperatoria.evolucaoPaciente"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="ruim"
-                    />
-                    <span>Ruim</span>
-                  </label>
-                </div>
-                <input
-                  v-model="evolucaoPosOperatoria.evolucaoComentario"
-                  class="form-input text-xs"
-                  placeholder="Comentário"
-                  type="text"
-                />
-              </div>
-
-              <div class="grid grid-cols-1 md:grid-cols-[1.2fr,1.4fr] gap-3 items-center">
-                <div class="flex items-center gap-4 text-xs">
-                  <span class="font-semibold text-gray-700">
-                    Está seguindo corretamente as orientações pós operatórias?
-                  </span>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="evolucaoPosOperatoria.seguindoOrientacoes"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="nao"
-                    />
-                    <span>Não</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="evolucaoPosOperatoria.seguindoOrientacoes"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="sim"
-                    />
-                    <span>Sim</span>
-                  </label>
-                </div>
-                <input
-                  v-model="evolucaoPosOperatoria.orientacoesComentario"
-                  class="form-input text-xs"
-                  placeholder="Comentário"
-                  type="text"
-                />
-              </div>
-
-              <div class="space-y-3">
-                <div>
-                  <label class="block text-xs font-semibold text-gray-700 mb-1">
-                    Anexo de imagem do pós operatório
-                  </label>
-                  <div class="grid grid-cols-1 md:grid-cols-[1.2fr,1.2fr,auto] gap-3 items-center">
-                    <input
-                      class="form-input text-xs"
-                      type="file"
-                      @change="
-                        (e: Event) => {
-                          const input = e.target as HTMLInputElement | null
-                          evolucaoPosOperatoria.novoArquivo =
-                            input?.files && input.files[0] ? input.files[0] : null
-                        }
-                      "
-                    />
-                    <input
-                      v-model="evolucaoPosOperatoria.novaObservacao"
-                      class="form-input text-xs"
-                      placeholder="Digite observação do arquivo"
-                      type="text"
-                    />
-                    <button
-                      class="h-9 w-9 inline-flex items-center justify-center rounded-md bg-primary-50 text-primary-700 hover:bg-primary-100 border border-primary-100"
-                      type="button"
-                      @click="
-                        evolucaoPosOperatoria.novoArquivo &&
-                          evolucaoPosOperatoria.anexosImagem.push({
-                            nome: evolucaoPosOperatoria.novoArquivo.name,
-                            observacao: evolucaoPosOperatoria.novaObservacao,
-                          });
-                        evolucaoPosOperatoria.novoArquivo = null;
-                        evolucaoPosOperatoria.novaObservacao = '';
-                      "
-                    >
-                      <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                    </button>
-                  </div>
-                </div>
-
-                <div
-                  v-for="(anexo, index) in evolucaoPosOperatoria.anexosImagem"
-                  :key="`${anexo.nome}-${index}`"
-                  class="grid grid-cols-1 md:grid-cols-[1.2fr,1.2fr,auto] gap-3 items-center"
-                >
-                  <div class="form-input text-xs flex items-center gap-2 bg-gray-50">
-                    <span class="text-gray-500 truncate">
-                      {{ anexo.nome }}
-                    </span>
-                  </div>
-                  <input
-                    v-model="anexo.observacao"
-                    class="form-input text-xs"
-                    placeholder="Digite observação do arquivo"
-                    type="text"
-                  />
-                  <button
-                    class="h-8 w-8 inline-flex items-center justify-center rounded-md border border-red-100 text-red-600 hover:bg-red-50"
-                    type="button"
-                    @click="evolucaoPosOperatoria.anexosImagem.splice(index, 1)"
-                  >
-                    <i class="fa-solid fa-trash" aria-hidden="true"></i>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </template>
-          <template v-else-if="secaoKey === 'secao_procedimentos_indicados'">
+          <template v-else-if="secaoKey === 'procedimentos-indicados'">
             <div class="space-y-3">
               <div
                 v-for="(proc, index) in procedimentosIndicados.itens"
@@ -2251,7 +2382,7 @@ onMounted(async () => {
               </button>
             </div>
           </template>
-          <template v-else-if="secaoKey === 'secao_exames_realizados'">
+          <template v-else-if="secaoKey === 'exames-realizados'">
             <div class="space-y-4">
               <div class="bg-gray-50 rounded-lg p-3 border border-gray-100 space-y-3">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -2388,7 +2519,7 @@ onMounted(async () => {
             <textarea
               v-model="secaoConteudo[secaoKey]"
               class="form-input text-xs min-h-[96px] resize-y"
-              :placeholder="secoesDictionary[secaoKey].placeholder"
+              :placeholder="secoesDictionary[secaoKey]?.placeholder || ''"
             />
           </template>
         </div>
@@ -2431,4 +2562,76 @@ onMounted(async () => {
       </div>
     </div>
   </section>
+  <div
+    v-if="isAlergiaModalOpen"
+    class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+  >
+    <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg p-5">
+      <h2 class="text-sm font-semibold text-primary-700 mb-2">
+        Nova alergia
+      </h2>
+      <p class="text-xs text-gray-500 mb-3">
+        Digite o nome da nova alergia. Ela ficará disponível apenas neste estabelecimento.
+      </p>
+      <input
+        v-model="alergiaModalNome"
+        class="form-input text-xs mb-4"
+        placeholder="Ex.: Dipirona"
+        type="text"
+      />
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          class="text-xs text-gray-500 underline"
+          @click="fecharAlergiaModal"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          class="btn-primary text-xs py-1.5 px-3 disabled:opacity-60 disabled:cursor-not-allowed"
+          :disabled="!alergiaModalNome.trim()"
+          @click="salvarNovaAlergia"
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+  <div
+    v-if="isCirurgiaModalOpen"
+    class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+  >
+    <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg p-5">
+      <h2 class="text-sm font-semibold text-primary-700 mb-2">
+        Nova cirurgia
+      </h2>
+      <p class="text-xs text-gray-500 mb-3">
+        Digite o nome da nova cirurgia. Ela ficará disponível apenas neste estabelecimento.
+      </p>
+      <input
+        v-model="cirurgiaModalNome"
+        class="form-input text-xs mb-4"
+        placeholder="Ex.: Colecistectomia laparoscópica"
+        type="text"
+      />
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          class="text-xs text-gray-500 underline"
+          @click="fecharCirurgiaModal"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          class="btn-primary text-xs py-1.5 px-3 disabled:opacity-60 disabled:cursor-not-allowed"
+          :disabled="!cirurgiaModalNome.trim()"
+          @click="salvarNovaCirurgia"
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  </div>
 </template>

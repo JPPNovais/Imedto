@@ -32,6 +32,7 @@ const isLoading = ref(false)
 const events = reactive<Evento[]>([])
 const activePeriod = ref<Periodo>('dia')
 const selectedDate = ref<string>(new Date().toISOString().substring(0, 10))
+const todayIso = ref<string>(new Date().toISOString().substring(0, 10))
 const profissionalId = ref<string | null>(null)
 const estabelecimentoId = ref<string | null>(null)
 const filterProfessionalId = ref<string>('')
@@ -137,6 +138,10 @@ watch(
 watch(filterProfessionalId, () => {
   loadEvents()
 })
+
+function isEventInPast(event: Evento): boolean {
+  return new Date(event.data_hora_inicio).getTime() < Date.now()
+}
 
 watch(filterSpecialtyId, () => {
   loadEvents()
@@ -374,6 +379,15 @@ async function createEvent() {
   const end = new Date(start)
   end.setMinutes(start.getMinutes() + (createForm.durationMinutes || 30))
 
+  // impede agendamentos em datas/horários passados
+  const now = new Date()
+  if (start.getTime() < now.getTime()) {
+    feedback.error(
+      'Só é possível agendar consultas para datas e horários futuros.',
+    )
+    return
+  }
+
   // verifica conflitos na agenda do profissional para o dia selecionado
   const dayStart = new Date(createForm.date + 'T00:00:00').toISOString()
   const dayEnd = new Date(createForm.date + 'T00:00:00')
@@ -493,6 +507,10 @@ function openCreateModal() {
 }
 
 function openEditModal(event: Evento) {
+  if (isEventInPast(event)) {
+    feedback.error('Agendamentos que já passaram não podem ser editados.')
+    return
+  }
   editingEventId.value = event.id
   isCreating.value = true
 
@@ -963,6 +981,7 @@ onMounted(() => {
                     Confirmar
                   </button>
                   <button
+                    v-if="!isEventInPast(event)"
                     class="inline-flex items-center justify-center h-7 w-7 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"
                     type="button"
                     @click="openEditModal(event)"
@@ -1002,6 +1021,7 @@ onMounted(() => {
               </label>
               <input
                 v-model="createForm.date"
+                :min="todayIso"
                 class="form-input text-xs"
                 type="date"
               />

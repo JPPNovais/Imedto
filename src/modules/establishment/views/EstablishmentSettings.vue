@@ -18,6 +18,22 @@ type Sala = {
   tipo_nome?: string | null
 }
 
+type VariavelTipoId =
+  | 'alergia'
+  | 'cirurgia'
+  | 'doenca_hereditaria'
+  | 'doenca_cronica'
+  | 'droga'
+  | 'relacao_familiar'
+  | 'expectativa'
+  | 'atividade_fisica'
+  | 'cirurgia_pregressa'
+
+type VariavelItem = {
+  nome: string
+  estabelecimento_id: string | null
+}
+
 const auth = useAuthStore()
 const feedback = useFeedbackStore()
 const router = useRouter()
@@ -26,9 +42,37 @@ const estabelecimentoId = ref<string | null>(null)
 const isLoading = ref(false)
 const isSavingEstab = ref(false)
 const isSavingSala = ref(false)
+const isSavingVariavel = ref(false)
 
 const tiposSala = ref<TipoSala[]>([])
 const salas = ref<Sala[]>([])
+
+const variavelTipos: { id: VariavelTipoId; label: string }[] = [
+  { id: 'alergia', label: 'Alergias' },
+  { id: 'cirurgia', label: 'Cirurgias' },
+  { id: 'doenca_hereditaria', label: 'Doenças hereditárias' },
+  { id: 'doenca_cronica', label: 'Doenças crônicas / comorbidades' },
+  { id: 'droga', label: 'Drogas / substâncias ilícitas' },
+  { id: 'relacao_familiar', label: 'Relações familiares' },
+  { id: 'expectativa', label: 'Expectativas do paciente' },
+  { id: 'atividade_fisica', label: 'Atividades físicas' },
+  { id: 'cirurgia_pregressa', label: 'Cirurgias pregressas' },
+]
+
+const variaveisPorTipo = reactive<Record<VariavelTipoId, VariavelItem[]>>(
+  variavelTipos.reduce(
+    (acc, t) => {
+      acc[t.id] = []
+      return acc
+    },
+    {} as Record<VariavelTipoId, VariavelItem[]>,
+  ),
+)
+
+const variavelAtiva = ref<VariavelTipoId>('alergia')
+const novaVariavel = ref('')
+const variavelEditIndex = ref<number | null>(null)
+const variavelEditValue = ref('')
 
 const formEstab = reactive({
   nomeFantasia: '',
@@ -47,7 +91,7 @@ const novaSala = reactive({
   tipoSalaId: '',
 })
 
-const activeTab = ref<'dados' | 'salas' | 'outras'>('dados')
+const activeTab = ref<'dados' | 'salas' | 'variaveis' | 'outras'>('dados')
 
 async function loadData() {
   if (!auth.currentUser?.id) {
@@ -98,6 +142,43 @@ async function loadData() {
 
       if (!salasError && salasData) {
         salas.value = salasData as Sala[]
+      }
+
+      const { data: varsData, error: varsError } = await supabase
+        .from('prontuario_variaveis_pool')
+        .select('tipo, nome, estabelecimento_id')
+        .in(
+          'tipo',
+          variavelTipos.map((v) => v.id),
+        )
+
+      if (!varsError && varsData) {
+        const map = variaveisPorTipo as Record<string, VariavelItem[]>
+        variavelTipos.forEach((v) => {
+          map[v.id] = []
+        })
+
+        ;(
+          varsData as {
+            tipo: VariavelTipoId
+            nome: string
+            estabelecimento_id: string | null
+          }[]
+        ).forEach((row) => {
+          if (!map[row.tipo]) {
+            map[row.tipo] = []
+          }
+          map[row.tipo].push({
+            nome: row.nome,
+            estabelecimento_id: row.estabelecimento_id,
+          })
+        })
+
+        variavelTipos.forEach((v) => {
+          map[v.id] = map[v.id]
+            .slice()
+            .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+        })
       }
     }
   } finally {
@@ -226,6 +307,153 @@ async function addSala() {
   }
 }
 
+async function addVariavel() {
+  if (!estabelecimentoId.value) {
+    feedback.error(
+      'Salve os dados do estabelecimento antes de cadastrar variáveis.',
+    )
+    return
+  }
+
+  const nome = novaVariavel.value.trim()
+  if (!nome) {
+    feedback.error('Informe o nome da variável.')
+    return
+  }
+
+  const tipo = variavelAtiva.value
+  const lista = variaveisPorTipo[tipo]
+
+  if (lista.some((v) => v.nome === nome)) {
+    feedback.error('Essa opção já está cadastrada nessa lista.')
+    return
+  }
+
+  isSavingVariavel.value = true
+  try {
+    const { error } = await supabase.from('prontuario_variaveis_pool').insert({
+      estabelecimento_id: estabelecimentoId.value,
+      tipo,
+      nome,
+    })
+
+    if (error) {
+      console.error(error)
+      feedback.error('Não foi possível cadastrar a variável.')
+      return
+    }
+
+    lista.push({
+      nome,
+      estabelecimento_id: estabelecimentoId.value,
+    })
+    lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    novaVariavel.value = ''
+    feedback.success('Varíavel cadastrada com sucesso.')
+  } finally {
+    isSavingVariavel.value = false
+  }
+}
+
+async function saveVariavelEdit(index: number) {
+  if (!estabelecimentoId.value) return
+
+  const tipo = variavelAtiva.value
+  const lista = variaveisPorTipo[tipo]
+  const item = lista[index]
+  if (!item || !item.estabelecimento_id) {
+    feedback.error(
+      'Apenas variáveis cadastradas pelo estabelecimento podem ser editadas.',
+    )
+    variavelEditIndex.value = null
+    variavelEditValue.value = ''
+    return
+  }
+
+  const original = item.nome
+  const novoNome = variavelEditValue.value.trim()
+  if (!novoNome || original === novoNome) {
+    variavelEditIndex.value = null
+    variavelEditValue.value = ''
+    return
+  }
+
+  isSavingVariavel.value = true
+  try {
+    const { data, error } = await supabase
+      .from('prontuario_variaveis_pool')
+      .update({ nome: novoNome })
+      .eq('tipo', tipo)
+      .eq('estabelecimento_id', item.estabelecimento_id)
+      .eq('nome', original)
+      .select('nome')
+
+    if (error) {
+      console.error(error)
+      feedback.error('Não foi possível atualizar a variável.')
+      return
+    }
+
+    if (data && data.length > 0) {
+      lista[index] = {
+        ...item,
+        nome: novoNome,
+      }
+      lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    }
+
+    variavelEditIndex.value = null
+    variavelEditValue.value = ''
+    feedback.success('Variável atualizada com sucesso.')
+  } finally {
+    isSavingVariavel.value = false
+  }
+}
+
+async function deleteVariavel(index: number) {
+  if (!estabelecimentoId.value) return
+
+  const tipo = variavelAtiva.value
+  const lista = variaveisPorTipo[tipo]
+  const item = lista[index]
+  if (!item || !item.estabelecimento_id) {
+    feedback.error(
+      'Apenas variáveis cadastradas pelo estabelecimento podem ser excluídas.',
+    )
+    return
+  }
+
+  const nome = item.nome
+  if (
+    !window.confirm(
+      `Deseja realmente excluir "${nome}"? Ela deixará de aparecer nos dropdowns deste estabelecimento.`,
+    )
+  ) {
+    return
+  }
+
+  isSavingVariavel.value = true
+  try {
+    const { error } = await supabase
+      .from('prontuario_variaveis_pool')
+      .delete()
+      .eq('tipo', tipo)
+      .eq('estabelecimento_id', item.estabelecimento_id)
+      .eq('nome', nome)
+
+    if (error) {
+      console.error(error)
+      feedback.error('Não foi possível excluir a variável.')
+      return
+    }
+
+    lista.splice(index, 1)
+    feedback.success('Variável excluída com sucesso.')
+  } finally {
+    isSavingVariavel.value = false
+  }
+}
+
 function goToMedicalRecordModels() {
   router.push({ name: 'medical-record-models' })
 }
@@ -284,6 +512,14 @@ onMounted(() => {
           @click="activeTab = 'salas'"
         >
           Salas de atendimento
+        </button>
+        <button
+          class="px-4 py-1 rounded-full"
+          :class="activeTab === 'variaveis' ? 'bg-white text-primary-700 shadow-sm' : ''"
+          type="button"
+          @click="activeTab = 'variaveis'"
+        >
+          Listas de variáveis
         </button>
         <button
           class="px-4 py-1 rounded-full"
@@ -486,6 +722,130 @@ onMounted(() => {
             class="py-2 flex items-center justify-between"
           >
             <span class="text-gray-800">{{ sala.nome }}</span>
+          </li>
+        </ul>
+      </div>
+
+      <div
+        v-if="activeTab === 'variaveis'"
+        class="bg-white rounded-xl shadow-sm border border-gray-100 p-6"
+      >
+        <h2 class="text-sm font-semibold text-primary-700 mb-2">
+          Listas de variáveis
+        </h2>
+        <p class="text-xs text-gray-500 mb-4">
+          Gerencie listas usadas em dropdowns do prontuário, como alergias, cirurgias, doenças e outras variáveis.
+        </p>
+
+        <div class="mb-4 flex flex-wrap gap-2 text-[11px]">
+          <button
+            v-for="tipo in variavelTipos"
+            :key="tipo.id"
+            type="button"
+            class="px-3 py-1 rounded-full border"
+            :class="
+              variavelAtiva === tipo.id
+                ? 'border-primary-600 bg-primary-50 text-primary-700'
+                : 'border-gray-200 bg-gray-50 text-gray-600'
+            "
+            @click="
+              variavelAtiva = tipo.id;
+              variavelEditIndex = null;
+              variavelEditValue = '';
+            "
+          >
+            {{ tipo.label }}
+          </button>
+        </div>
+
+        <form
+          class="grid grid-cols-1 md:grid-cols-[1.6fr,auto] gap-3 items-end mb-4"
+          @submit.prevent="addVariavel"
+        >
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">
+              Nova opção
+            </label>
+            <input
+              v-model="novaVariavel"
+              type="text"
+              placeholder="Digite uma nova opção para esta lista"
+              class="form-input text-xs"
+            />
+          </div>
+          <div class="flex justify-end">
+            <button
+              type="submit"
+              class="btn-primary max-w-xs text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+              :disabled="isSavingVariavel"
+            >
+              {{ isSavingVariavel ? 'Adicionando...' : 'Adicionar' }}
+            </button>
+          </div>
+        </form>
+
+        <div
+          v-if="!variaveisPorTipo[variavelAtiva].length"
+          class="text-sm text-gray-500"
+        >
+          Nenhuma opção cadastrada ainda para esta lista.
+        </div>
+        <ul v-else class="divide-y divide-gray-100 text-sm">
+          <li
+            v-for="(item, index) in variaveisPorTipo[variavelAtiva]"
+            :key="`${item.nome}-${item.estabelecimento_id ?? 'default'}`"
+            class="py-2 flex items-center justify-between gap-3"
+          >
+            <div class="flex-1 flex items-center gap-2">
+              <input
+                v-if="variavelEditIndex === index"
+                v-model="variavelEditValue"
+                type="text"
+                class="form-input text-xs"
+              />
+              <span
+                v-else
+                class="text-gray-800 text-xs"
+              >
+                {{ item.nome }}
+              </span>
+              <span
+                v-if="!item.estabelecimento_id"
+                class="inline-flex items-center rounded-full bg-gray-100 text-gray-500 px-2 py-0.5 text-[10px]"
+              >
+                Padrão do sistema
+              </span>
+            </div>
+            <div class="flex items-center gap-2 text-[11px]">
+              <button
+                v-if="item.estabelecimento_id"
+                type="button"
+                class="text-primary-600 hover:underline"
+                @click="
+                  variavelEditIndex = index;
+                  variavelEditValue = item.nome;
+                "
+              >
+                Editar
+              </button>
+              <button
+                v-if="item.estabelecimento_id && variavelEditIndex === index"
+                type="button"
+                class="text-primary-600 hover:underline"
+                @click="saveVariavelEdit(index)"
+              >
+                Salvar
+              </button>
+              <button
+                v-if="item.estabelecimento_id"
+                type="button"
+                class="text-red-600 hover:underline disabled:opacity-50"
+                :disabled="isSavingVariavel"
+                @click="deleteVariavel(index)"
+              >
+                Excluir
+              </button>
+            </div>
           </li>
         </ul>
       </div>
