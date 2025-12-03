@@ -20,6 +20,7 @@ const estabelecimentoId = ref<string | null>(null)
 const pacienteId = ref<string | null>(null)
 const prontuarioId = ref<string | null>(null)
 const profissionalId = ref<string | null>(null)
+const pacienteSexo = ref<string | null>(null)
 const modelos = ref<ModeloProntuario[]>([])
 const selectedModeloId = ref<string>('')
 const isLoading = ref(false)
@@ -666,6 +667,24 @@ async function loadProfissional() {
   profissionalId.value = data?.id ?? null
 }
 
+async function loadPacienteSexo() {
+  if (!pacienteId.value) return
+
+  const { data, error } = await supabase
+    .from('pacientes')
+    .select('sexo')
+    .eq('id', pacienteId.value)
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  pacienteSexo.value = (data?.sexo as string | null) ?? null
+}
+
 async function ensureProntuario() {
   if (!estabelecimentoId.value || !pacienteId.value) return
 
@@ -1056,6 +1075,9 @@ onMounted(async () => {
     await loadEstabelecimento()
     if (!estabelecimentoId.value) return
     await loadProfissional()
+    if (pacienteId.value) {
+      await loadPacienteSexo()
+    }
     await loadModelos()
     await loadAlergiasPool()
     await loadCirurgiasPool()
@@ -1832,6 +1854,12 @@ onMounted(async () => {
                 <div class="border-t border-gray-100 pt-3 mt-2 space-y-3">
                   <p class="text-xs font-semibold text-gray-700">
                     Sexo
+                    <span
+                      v-if="pacienteSexo"
+                      class="ml-2 text-[11px] font-normal text-gray-600"
+                    >
+                      ({{ pacienteSexo }})
+                    </span>
                   </p>
 
                   <div class="grid grid-cols-1 md:grid-cols-[0.9fr,1.3fr] gap-3 items-center">
