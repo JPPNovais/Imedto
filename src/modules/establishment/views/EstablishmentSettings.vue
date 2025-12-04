@@ -21,6 +21,7 @@ type Sala = {
 type VariavelTipoId =
   | 'alergia'
   | 'cirurgia'
+  | 'medicacao'
   | 'doenca_hereditaria'
   | 'doenca_cronica'
   | 'droga'
@@ -50,6 +51,7 @@ const salas = ref<Sala[]>([])
 const variavelTipos: { id: VariavelTipoId; label: string }[] = [
   { id: 'alergia', label: 'Alergias' },
   { id: 'cirurgia', label: 'Cirurgias' },
+  { id: 'medicacao', label: 'Medicações em uso' },
   { id: 'doenca_hereditaria', label: 'Doenças hereditárias' },
   { id: 'doenca_cronica', label: 'Doenças crônicas / comorbidades' },
   { id: 'droga', label: 'Drogas / substâncias ilícitas' },

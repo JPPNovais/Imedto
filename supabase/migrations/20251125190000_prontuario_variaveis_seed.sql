@@ -136,6 +136,19 @@ values
   (null, 'expectativa', 'Melhora da qualidade de vida')
 on conflict (estabelecimento_id, tipo, nome) do nothing;
 
+-- Medicações em uso
+insert into public.prontuario_variaveis_pool (estabelecimento_id, tipo, nome)
+values
+  (null, 'medicacao', 'Losartana'),
+  (null, 'medicacao', 'Hidroclorotiazida'),
+  (null, 'medicacao', 'Metformina'),
+  (null, 'medicacao', 'Sinvastatina'),
+  (null, 'medicacao', 'Omeprazol'),
+  (null, 'medicacao', 'AAS'),
+  (null, 'medicacao', 'Insulina NPH'),
+  (null, 'medicacao', 'Insulina Regular')
+on conflict (estabelecimento_id, tipo, nome) do nothing;
+
 -- Atividades físicas
 insert into public.prontuario_variaveis_pool (estabelecimento_id, tipo, nome)
 values

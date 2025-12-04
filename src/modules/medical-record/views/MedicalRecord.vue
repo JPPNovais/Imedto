@@ -4,12 +4,26 @@ import { supabase } from '@/lib/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedbackStore } from '@/stores/feedback'
 import { useRoute } from 'vue-router'
+import HistoriaFamiliarSection from '../components/HistoriaFamiliarSection.vue'
+import HistoriaSocialSection from '../components/HistoriaSocialSection.vue'
+import HistoriaPregressaSection from '../components/HistoriaPregressaSection.vue'
+import ExamesRealizadosSection from '../components/ExamesRealizadosSection.vue'
+import ExameFisicoSection from '../components/ExameFisicoSection.vue'
+import EquipeCirurgicaSection from '../components/EquipeCirurgicaSection.vue'
+import FotosPacienteSection from '../components/FotosPacienteSection.vue'
+import EvolucaoPosOperatoriaSection from '../components/EvolucaoPosOperatoriaSection.vue'
+import {
+  alergiasDefault,
+  cirurgiasDefault,
+  medicacoesDefault,
+  doencasCronicasDefault,
+} from '../constants/medicalRecordConstants'
 
 type ModeloProntuario = {
   id: string
   nome: string
   descricao: string | null
-  estrutura: Record<string, any> | null
+  estrutura: Record<string, unknown> | null
 }
 
 const auth = useAuthStore()
@@ -21,6 +35,12 @@ const pacienteId = ref<string | null>(null)
 const prontuarioId = ref<string | null>(null)
 const profissionalId = ref<string | null>(null)
 const pacienteSexo = ref<string | null>(null)
+const isPacienteFeminino = computed(() => {
+  const s = (pacienteSexo.value || '').toLowerCase().trim()
+  if (!s) return false
+  if (s === 'f' || s === 'feminino') return true
+  return s.includes('feminino')
+})
 const modelos = ref<ModeloProntuario[]>([])
 const selectedModeloId = ref<string>('')
 const isLoading = ref(false)
@@ -38,6 +58,25 @@ const secaoConteudo = reactive<Record<string, string>>({})
 type AnexoItem = {
   nome: string
 }
+
+type ExameAnexo = {
+  nome: string
+  observacao: string
+  file?: File | null
+  previewUrl?: string
+  tipo?: 'imagem' | 'pdf' | 'outro'
+}
+
+type ExameItem = {
+  tipoExame: string
+  materialExame: string
+  nomeExame: string
+  comentarioExame: string
+  anexosImagem: ExameAnexo[]
+  novoAnexoArquivo: File | null
+  novoAnexoObservacao: string
+}
+
 const anexos = ref<AnexoItem[]>([])
 const hasAnexos = computed(() => (anexos.value ?? []).length > 0)
 const hasEvolucoes = computed(() => (evolucoes.value ?? []).length > 0)
@@ -59,9 +98,24 @@ const historiaPregressa = reactive({
   ] as { alergia: string; observacao: string }[],
   usoMedicamentos: '' as '' | 'sim' | 'nao',
   usoMedicamentosDescricao: '',
+  medicacoes: [
+    {
+      medicamento: '',
+      dose: '',
+      frequencia: '',
+      indicacao: '',
+      observacao: '',
+    },
+  ] as {
+    medicamento: string
+    dose: string
+    frequencia: string
+    indicacao: string
+    observacao: string
+  }[],
   cirurgiasAnteriores: '' as '' | 'sim' | 'nao',
   cirurgiasDescricao: '',
-   cirurgiasDetalhadas: [
+  cirurgiasDetalhadas: [
     {
       cirurgia: '',
       ano: '',
@@ -70,6 +124,21 @@ const historiaPregressa = reactive({
   ] as { cirurgia: string; ano: string; observacao: string }[],
   doencasPrevias: '' as '' | 'sim' | 'nao',
   doencasDescricao: '',
+  doencasDetalhadas: [
+    {
+      doenca: '',
+      observacao: '',
+    },
+  ] as { doenca: string; observacao: string }[],
+  informarCicloMenstrual: '' as '' | 'sim' | 'nao',
+  cicloMenarcaIdade: '',
+  cicloMenopausa: '' as '' | 'sim' | 'nao',
+  cicloTipo: '',
+  cicloIntervaloDias: '',
+  cicloDuracaoFluxoDias: '',
+  cicloDum: '',
+  cicloIntensidadeFluxo: '',
+  cicloObservacoes: '',
   tipoCicatrizacaoNivel: '',
   tipoCicatrizacaoDescricao: '',
   usaAnticoncepcional: '' as '' | 'sim' | 'nao',
@@ -82,31 +151,7 @@ const historiaPregressa = reactive({
   observacoes: '',
 })
 
-const alergiasDefault = [
-  'Dipirona',
-  'AAS (Ácido acetilsalicílico)',
-  'Ibuprofeno',
-  'Diclofenaco',
-  'Penicilina',
-  'Amoxicilina',
-  'Cefalosporinas',
-  'Quinolonas',
-  'Contraste iodado',
-  'Látex',
-  'Anestésicos locais',
-]
-
 const alergiasPool = ref<string[]>([...alergiasDefault])
-
-const cirurgiasDefault = [
-  'Apendicectomia',
-  'Colecistectomia',
-  'Cesárea',
-  'Histerectomia',
-  'Cirurgia bariátrica',
-  'Herniorrafia inguinal',
-  'Artroplastia de quadril/joelho',
-]
 
 const cirurgiasPool = ref<string[]>([...cirurgiasDefault])
 
@@ -117,6 +162,16 @@ const alergiaModalIndex = ref<number | null>(null)
 const isCirurgiaModalOpen = ref(false)
 const cirurgiaModalNome = ref('')
 const cirurgiaModalIndex = ref<number | null>(null)
+
+const medicacoesPool = ref<string[]>([...medicacoesDefault])
+const isMedicacaoModalOpen = ref(false)
+const medicacaoModalNome = ref('')
+const medicacaoModalIndex = ref<number | null>(null)
+
+const doencasCronicasPool = ref<string[]>([...doencasCronicasDefault])
+const isDoencaModalOpen = ref(false)
+const doencaModalNome = ref('')
+const doencaModalIndex = ref<number | null>(null)
 
 async function loadAlergiasPool() {
   const filtros = supabase
@@ -180,6 +235,68 @@ async function loadCirurgiasPool() {
   cirurgiasPool.value = Array.from(set)
 }
 
+async function loadMedicacoesPool() {
+  const filtros = supabase
+    .from('prontuario_variaveis_pool')
+    .select('nome, estabelecimento_id')
+    .eq('tipo', 'medicacao')
+
+  if (estabelecimentoId.value) {
+    filtros.or(
+      `estabelecimento_id.is.null,estabelecimento_id.eq.${estabelecimentoId.value}`,
+    )
+  } else {
+    filtros.is('estabelecimento_id', null)
+  }
+
+  const { data, error } = await filtros.order('nome')
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  const nomes = (data ?? []).map((row: { nome: string }) => row.nome)
+  const set = new Set(medicacoesDefault)
+  nomes.forEach((n) => {
+    if (n && !set.has(n)) {
+      set.add(n)
+    }
+  })
+  medicacoesPool.value = Array.from(set)
+}
+
+async function loadDoencasCronicasPool() {
+  const filtros = supabase
+    .from('prontuario_variaveis_pool')
+    .select('nome, estabelecimento_id')
+    .eq('tipo', 'doenca_cronica')
+
+  if (estabelecimentoId.value) {
+    filtros.or(
+      `estabelecimento_id.is.null,estabelecimento_id.eq.${estabelecimentoId.value}`,
+    )
+  } else {
+    filtros.is('estabelecimento_id', null)
+  }
+
+  const { data, error } = await filtros.order('nome')
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  const nomes = (data ?? []).map((row: { nome: string }) => row.nome)
+  const set = new Set(doencasCronicasDefault)
+  nomes.forEach((n) => {
+    if (n && !set.has(n)) {
+      set.add(n)
+    }
+  })
+  doencasCronicasPool.value = Array.from(set)
+}
+
 async function adicionarAlergiaAoPool(novaAlergia: string) {
   if (!estabelecimentoId.value) return
   const nome = novaAlergia.trim()
@@ -226,6 +343,53 @@ async function adicionarCirurgiaAoPool(novaCirurgia: string) {
   }
 }
 
+async function adicionarMedicacaoAoPool(novaMedicacao: string) {
+  if (!estabelecimentoId.value) return
+  const nome = novaMedicacao.trim()
+  if (!nome) return
+
+  if (medicacoesPool.value.includes(nome)) return
+
+  medicacoesPool.value = [...medicacoesPool.value, nome].sort((a, b) =>
+    a.localeCompare(b, 'pt-BR'),
+  )
+
+  const { error } = await supabase.from('prontuario_variaveis_pool').insert({
+    estabelecimento_id: estabelecimentoId.value,
+    tipo: 'medicacao',
+    nome,
+  })
+
+  if (error) {
+    console.error(error)
+    feedback.error('Não foi possível salvar a nova medicação.')
+  }
+}
+
+async function adicionarDoencaCronicaAoPool(novaDoenca: string) {
+  if (!estabelecimentoId.value) return
+  const nome = novaDoenca.trim()
+  if (!nome) return
+
+  if (doencasCronicasPool.value.includes(nome)) return
+
+  doencasCronicasPool.value = [
+    ...doencasCronicasPool.value,
+    nome,
+  ].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+
+  const { error } = await supabase.from('prontuario_variaveis_pool').insert({
+    estabelecimento_id: estabelecimentoId.value,
+    tipo: 'doenca_cronica',
+    nome,
+  })
+
+  if (error) {
+    console.error(error)
+    feedback.error('Não foi possível salvar a nova doença.')
+  }
+}
+
 function onAlergiaSelectChange(event: Event, index: number) {
   const target = event.target as HTMLSelectElement | null
   if (!target) return
@@ -253,6 +417,36 @@ function onCirurgiaSelectChange(event: Event, index: number) {
     historiaPregressa.cirurgiasDetalhadas[index].cirurgia = ''
   } else {
     historiaPregressa.cirurgiasDetalhadas[index].cirurgia = value
+  }
+}
+
+function onMedicacaoSelectChange(event: Event, index: number) {
+  const target = event.target as HTMLSelectElement | null
+  if (!target) return
+  const value = target.value
+
+  if (value === '__outra__') {
+    medicacaoModalIndex.value = index
+    medicacaoModalNome.value = ''
+    isMedicacaoModalOpen.value = true
+    historiaPregressa.medicacoes[index].medicamento = ''
+  } else {
+    historiaPregressa.medicacoes[index].medicamento = value
+  }
+}
+
+function onDoencaCronicaSelectChange(event: Event, index: number) {
+  const target = event.target as HTMLSelectElement | null
+  if (!target) return
+  const value = target.value
+
+  if (value === '__outra__') {
+    doencaModalIndex.value = index
+    doencaModalNome.value = ''
+    isDoencaModalOpen.value = true
+    historiaPregressa.doencasDetalhadas[index].doenca = ''
+  } else {
+    historiaPregressa.doencasDetalhadas[index].doenca = value
   }
 }
 
@@ -296,6 +490,44 @@ function fecharCirurgiaModal() {
   cirurgiaModalNome.value = ''
 }
 
+async function salvarNovaMedicacao() {
+  if (medicacaoModalIndex.value === null) return
+  const nome = medicacaoModalNome.value.trim()
+  if (!nome) return
+
+  await adicionarMedicacaoAoPool(nome)
+  historiaPregressa.medicacoes[medicacaoModalIndex.value].medicamento = nome
+
+  isMedicacaoModalOpen.value = false
+  medicacaoModalIndex.value = null
+  medicacaoModalNome.value = ''
+}
+
+function fecharMedicacaoModal() {
+  isMedicacaoModalOpen.value = false
+  medicacaoModalIndex.value = null
+  medicacaoModalNome.value = ''
+}
+
+async function salvarNovaDoencaCronica() {
+  if (doencaModalIndex.value === null) return
+  const nome = doencaModalNome.value.trim()
+  if (!nome) return
+
+  await adicionarDoencaCronicaAoPool(nome)
+  historiaPregressa.doencasDetalhadas[doencaModalIndex.value].doenca = nome
+
+  isDoencaModalOpen.value = false
+  doencaModalIndex.value = null
+  doencaModalNome.value = ''
+}
+
+function fecharDoencaModal() {
+  isDoencaModalOpen.value = false
+  doencaModalIndex.value = null
+  doencaModalNome.value = ''
+}
+
 const historiaFamiliar = reactive({
   historicoPai: '',
   historicoMae: '',
@@ -324,14 +556,91 @@ const historiaFamiliar = reactive({
 })
 
 const historiaSocial = reactive({
-  tabagismo: '' as '' | 'sim' | 'nao',
-  tabagismoComentario: '',
-  etilismo: '' as '' | 'sim' | 'nao',
-  etilismoComentario: '',
-  outrasSubstancias: '' as '' | 'sim' | 'nao',
-  outrasSubstanciasComentario: '',
-  atividadeFisica: '' as '' | 'sim' | 'nao',
-  atividadeFisicaComentario: '',
+  estadoCivil: '',
+  filhosTem: '' as '' | 'sim' | 'nao',
+  filhosQuantidade: '',
+  filhosIdades: '',
+  filhosObservacoes: '',
+  tabagismoTem: '' as '' | 'sim' | 'nao',
+  tabagismoStatus: '' as
+    | ''
+    | 'nao_fuma'
+    | 'fumante_ativo'
+    | 'fumante_passivo'
+    | 'ex_fumante',
+  tabagismoTipos: [
+    {
+      tipo: '',
+      quantidade: '',
+      unidade: '',
+      tempoQuantidade: '',
+      tempoUnidade: '',
+    },
+  ] as {
+    tipo: string
+    quantidade: string
+    unidade: string
+    tempoQuantidade: string
+    tempoUnidade: string
+  }[],
+  tabagismoObservacoes: '',
+  etilismoTem: '' as '' | 'sim' | 'nao',
+  etilismoStatus: '' as
+    | ''
+    | 'nao_bebe'
+    | 'esporadico'
+    | 'social'
+    | 'moderado'
+    | 'frequente'
+    | 'ex_etilista',
+  etilismoBebidas: [
+    {
+      tipo: '',
+      frequencia: '',
+      quantidade: '',
+      unidade: '',
+    },
+  ] as {
+    tipo: string
+    frequencia: string
+    quantidade: string
+    unidade: string
+  }[],
+  etilismoObservacoes: '',
+  outrasSubstanciasTem: '' as '' | 'sim' | 'nao',
+  outrasSubstanciasStatus: '' as '' | 'nao' | 'uso_atual' | 'uso_previo',
+  outrasSubstanciasLista: [
+    {
+      tipo: '',
+      frequencia: '',
+      observacoes: '',
+    },
+  ] as {
+    tipo: string
+    frequencia: string
+    observacoes: string
+  }[],
+  atividadeFisicaTem: '' as '' | 'sim' | 'nao',
+  atividadeFisicaNivel: '' as
+    | ''
+    | 'sedentario'
+    | 'leve'
+    | 'moderado'
+    | 'intenso',
+  atividadeFisicaAtividades: [
+    {
+      tipo: '',
+      frequencia: '',
+    },
+  ] as {
+    tipo: string
+    frequencia: string
+  }[],
+  atividadeFisicaObservacoes: '',
+  alimentacaoTipo: '',
+  alimentacaoObservacoes: '',
+  sonoRotinaQualidade: '',
+  sonoRotinaObservacoes: '',
 })
 
 const exameFisico = reactive({
@@ -344,13 +653,17 @@ const exameFisico = reactive({
 })
 
 const examesRealizados = reactive({
-  tipoExame: '',
-  materialExame: '',
-  nomeExame: '',
-  comentarioExame: '',
-  anexosImagem: [] as { nome: string; observacao: string }[],
-  novoAnexoArquivo: null as File | null,
-  novoAnexoObservacao: '',
+  exames: [
+    {
+      tipoExame: '',
+      materialExame: '',
+      nomeExame: '',
+      comentarioExame: '',
+      anexosImagem: [] as ExameAnexo[],
+      novoAnexoArquivo: null as File | null,
+      novoAnexoObservacao: '',
+    },
+  ] as ExameItem[],
 })
 
 const equipe = reactive({
@@ -363,7 +676,7 @@ const equipe = reactive({
 })
 
 const fotosPaciente = reactive({
-  anexos: [] as { nome: string; observacao: string }[],
+  anexos: [] as { nome: string; observacao: string; previewUrl?: string }[],
   novoArquivo: null as File | null,
   novaObservacao: '',
 })
@@ -750,7 +1063,7 @@ async function loadEvolucoes() {
   }
 
   evolucoes.value =
-    data?.map((e: any) => ({
+    data?.map((e: { id: string; criado_em: string; modelo?: { nome: string } }) => ({
       id: e.id,
       criado_em: e.criado_em,
       modelo_nome: e.modelo?.nome ?? null,
@@ -773,7 +1086,7 @@ async function salvarEvolucao() {
   await ensureProntuario()
   if (!prontuarioId.value) return
 
-  const secoesPayload: Record<string, any> = {}
+  const secoesPayload: Record<string, unknown> = {}
   activeSections.value.forEach((key) => {
     if (key === 'anexos') {
       secoesPayload[key] = {
@@ -797,6 +1110,14 @@ async function salvarEvolucao() {
         uso_medicamentos: historiaPregressa.usoMedicamentos || null,
         uso_medicamentos_descricao:
           historiaPregressa.usoMedicamentosDescricao || '',
+        medicacoes_em_uso: historiaPregressa.medicacoes.filter(
+          (item) =>
+            item.medicamento.trim() ||
+            item.dose.trim() ||
+            item.frequencia.trim() ||
+            item.indicacao.trim() ||
+            item.observacao.trim(),
+        ),
         cirurgias_anteriores: historiaPregressa.cirurgiasAnteriores || null,
         cirurgias_descricao: historiaPregressa.cirurgiasDescricao || '',
         cirurgias_detalhadas: historiaPregressa.cirurgiasDetalhadas.filter(
@@ -807,6 +1128,20 @@ async function salvarEvolucao() {
         ),
         doencas_previas: historiaPregressa.doencasPrevias || null,
         doencas_descricao: historiaPregressa.doencasDescricao || '',
+        doencas_detalhadas: historiaPregressa.doencasDetalhadas.filter(
+          (item) => item.doenca.trim() || item.observacao.trim(),
+        ),
+        ciclo_menstrual: {
+          informar: historiaPregressa.informarCicloMenstrual || null,
+          menarca_idade: historiaPregressa.cicloMenarcaIdade || '',
+          menopausa: historiaPregressa.cicloMenopausa || null,
+          ciclo_tipo: historiaPregressa.cicloTipo || '',
+          intervalo_dias: historiaPregressa.cicloIntervaloDias || '',
+          duracao_fluxo_dias: historiaPregressa.cicloDuracaoFluxoDias || '',
+          dum: historiaPregressa.cicloDum || '',
+          intensidade_fluxo: historiaPregressa.cicloIntensidadeFluxo || '',
+          observacoes: historiaPregressa.cicloObservacoes || '',
+        },
         tipo_cicatrizacao_nivel: historiaPregressa.tipoCicatrizacaoNivel || '',
         tipo_cicatrizacao_descricao:
           historiaPregressa.tipoCicatrizacaoDescricao || '',
@@ -838,16 +1173,51 @@ async function salvarEvolucao() {
       }
     } else if (key === 'h-social') {
       secoesPayload[key] = {
-        tabagismo: historiaSocial.tabagismo || null,
-        tabagismo_comentario: historiaSocial.tabagismoComentario || '',
-        etilismo: historiaSocial.etilismo || null,
-        etilismo_comentario: historiaSocial.etilismoComentario || '',
-        outras_substancias: historiaSocial.outrasSubstancias || null,
-        outras_substancias_comentario:
-          historiaSocial.outrasSubstanciasComentario || '',
-        atividade_fisica: historiaSocial.atividadeFisica || null,
-        atividade_fisica_comentario:
-          historiaSocial.atividadeFisicaComentario || '',
+        estado_civil: historiaSocial.estadoCivil || '',
+        filhos_tem: historiaSocial.filhosTem || null,
+        filhos_quantidade: historiaSocial.filhosQuantidade || '',
+        filhos_idades: historiaSocial.filhosIdades || '',
+        filhos_observacoes: historiaSocial.filhosObservacoes || '',
+        tabagismo_status: historiaSocial.tabagismoStatus || null,
+        tabagismo_tipos: historiaSocial.tabagismoTipos.filter(
+          (t) =>
+            t.tipo.trim() ||
+            t.quantidade.trim() ||
+            t.unidade.trim() ||
+            t.tempoQuantidade.trim() ||
+            t.tempoUnidade.trim(),
+        ),
+        tabagismo_observacoes: historiaSocial.tabagismoObservacoes || '',
+        etilismo_status: historiaSocial.etilismoStatus || null,
+        etilismo_bebidas: historiaSocial.etilismoBebidas.filter(
+          (b) =>
+            b.tipo.trim() ||
+            b.frequencia.trim() ||
+            b.quantidade.trim() ||
+            b.unidade.trim(),
+        ),
+        etilismo_observacoes: historiaSocial.etilismoObservacoes || '',
+        outras_substancias_status:
+          historiaSocial.outrasSubstanciasStatus || null,
+        outras_substancias_lista:
+          historiaSocial.outrasSubstanciasLista.filter(
+            (s) =>
+              s.tipo.trim() ||
+              s.frequencia.trim() ||
+              s.observacoes.trim(),
+          ),
+        atividade_fisica_nivel: historiaSocial.atividadeFisicaNivel || null,
+        atividade_fisica_atividades:
+          historiaSocial.atividadeFisicaAtividades.filter(
+            (a) => a.tipo.trim() || a.frequencia.trim(),
+          ),
+        atividade_fisica_observacoes:
+          historiaSocial.atividadeFisicaObservacoes || '',
+        alimentacao_tipo: historiaSocial.alimentacaoTipo || '',
+        alimentacao_observacoes: historiaSocial.alimentacaoObservacoes || '',
+        sono_rotina_qualidade: historiaSocial.sonoRotinaQualidade || '',
+        sono_rotina_observacoes:
+          historiaSocial.sonoRotinaObservacoes || '',
       }
     } else if (key === 'exame-fisico') {
       secoesPayload[key] = {
@@ -862,11 +1232,26 @@ async function salvarEvolucao() {
       }
     } else if (key === 'exames-realizados') {
       secoesPayload[key] = {
-        tipo_exame: examesRealizados.tipoExame || '',
-        material_exame: examesRealizados.materialExame || '',
-        nome_exame: examesRealizados.nomeExame || '',
-        comentario_exame: examesRealizados.comentarioExame || '',
-        anexos_imagem: examesRealizados.anexosImagem ?? [],
+        exames: examesRealizados.exames
+          .filter(
+            (exame) =>
+              exame.tipoExame.trim() ||
+              exame.materialExame.trim() ||
+              exame.nomeExame.trim() ||
+              exame.comentarioExame.trim() ||
+              (exame.anexosImagem && exame.anexosImagem.length > 0),
+          )
+          .map((exame) => ({
+            tipo_exame: exame.tipoExame || '',
+            material_exame: exame.materialExame || '',
+            nome_exame: exame.nomeExame || '',
+            comentario_exame: exame.comentarioExame || '',
+            anexos_imagem:
+              exame.anexosImagem?.map((anexo) => ({
+                nome: anexo.nome,
+                observacao: anexo.observacao,
+              })) ?? [],
+          })),
       }
     } else if (key === 'equipe-cirurgica') {
       secoesPayload[key] = {
@@ -876,7 +1261,11 @@ async function salvarEvolucao() {
       }
     } else if (key === 'fotos-paciente') {
       secoesPayload[key] = {
-        anexos: fotosPaciente.anexos ?? [],
+        anexos:
+          fotosPaciente.anexos?.map((anexo) => ({
+            nome: anexo.nome,
+            observacao: anexo.observacao,
+          })) ?? [],
       }
     } else if (key === 'evolucao-pos-op') {
       secoesPayload[key] = {
@@ -974,6 +1363,18 @@ async function salvarEvolucao() {
     ]
     historiaPregressa.doencasPrevias = ''
     historiaPregressa.doencasDescricao = ''
+    historiaPregressa.doencasDetalhadas = [
+      { doenca: '', observacao: '' },
+    ]
+    historiaPregressa.informarCicloMenstrual = ''
+    historiaPregressa.cicloMenarcaIdade = ''
+    historiaPregressa.cicloMenopausa = ''
+    historiaPregressa.cicloTipo = ''
+    historiaPregressa.cicloIntervaloDias = ''
+    historiaPregressa.cicloDuracaoFluxoDias = ''
+    historiaPregressa.cicloDum = ''
+    historiaPregressa.cicloIntensidadeFluxo = ''
+    historiaPregressa.cicloObservacoes = ''
     historiaPregressa.tipoCicatrizacaoNivel = ''
     historiaPregressa.tipoCicatrizacaoDescricao = ''
     historiaPregressa.usaAnticoncepcional = ''
@@ -1003,27 +1404,73 @@ async function salvarEvolucao() {
     historiaFamiliar.historicoNivel = ''
     historiaFamiliar.historicoNivelDescricao = ''
     historiaFamiliar.observacao = ''
-    historiaSocial.tabagismo = ''
-    historiaSocial.tabagismoComentario = ''
-    historiaSocial.etilismo = ''
-    historiaSocial.etilismoComentario = ''
-    historiaSocial.outrasSubstancias = ''
-    historiaSocial.outrasSubstanciasComentario = ''
-    historiaSocial.atividadeFisica = ''
-    historiaSocial.atividadeFisicaComentario = ''
+    historiaSocial.estadoCivil = ''
+    historiaSocial.filhosTem = ''
+    historiaSocial.filhosQuantidade = ''
+    historiaSocial.filhosIdades = ''
+    historiaSocial.filhosObservacoes = ''
+    historiaSocial.tabagismoTem = ''
+    historiaSocial.tabagismoStatus = ''
+    historiaSocial.tabagismoTipos = [
+      {
+        tipo: '',
+        quantidade: '',
+        unidade: '',
+        tempoQuantidade: '',
+        tempoUnidade: '',
+      },
+    ]
+    historiaSocial.tabagismoObservacoes = ''
+    historiaSocial.etilismoTem = ''
+    historiaSocial.etilismoStatus = ''
+    historiaSocial.etilismoBebidas = [
+      {
+        tipo: '',
+        frequencia: '',
+        quantidade: '',
+        unidade: '',
+      },
+    ]
+    historiaSocial.etilismoObservacoes = ''
+    historiaSocial.outrasSubstanciasTem = ''
+    historiaSocial.outrasSubstanciasStatus = ''
+    historiaSocial.outrasSubstanciasLista = [
+      {
+        tipo: '',
+        frequencia: '',
+        observacoes: '',
+      },
+    ]
+    historiaSocial.atividadeFisicaTem = ''
+    historiaSocial.atividadeFisicaNivel = ''
+    historiaSocial.atividadeFisicaAtividades = [
+      {
+        tipo: '',
+        frequencia: '',
+      },
+    ]
+    historiaSocial.atividadeFisicaObservacoes = ''
+    historiaSocial.alimentacaoTipo = ''
+    historiaSocial.alimentacaoObservacoes = ''
+    historiaSocial.sonoRotinaQualidade = ''
+    historiaSocial.sonoRotinaObservacoes = ''
     exameFisico.peso = ''
     exameFisico.altura = ''
     exameFisico.ectoscopia = ''
     exameFisico.ectoscopiaComentario = ''
     exameFisico.ectoscopiaDescricao = ''
     exameFisico.resumoPesoAlturaImcEctoscopia = ''
-    examesRealizados.tipoExame = ''
-    examesRealizados.materialExame = ''
-    examesRealizados.nomeExame = ''
-    examesRealizados.comentarioExame = ''
-    examesRealizados.anexosImagem = []
-    examesRealizados.novoAnexoArquivo = null
-    examesRealizados.novoAnexoObservacao = ''
+    examesRealizados.exames = [
+      {
+        tipoExame: '',
+        materialExame: '',
+        nomeExame: '',
+        comentarioExame: '',
+        anexosImagem: [],
+        novoAnexoArquivo: null,
+        novoAnexoObservacao: '',
+      },
+    ]
     equipe.profissionais = [
       {
         profissional: '',
@@ -1079,8 +1526,12 @@ onMounted(async () => {
       await loadPacienteSexo()
     }
     await loadModelos()
-    await loadAlergiasPool()
-    await loadCirurgiasPool()
+    await Promise.all([
+      loadAlergiasPool(),
+      loadCirurgiasPool(),
+      loadMedicacoesPool(),
+      loadDoencasCronicasPool(),
+    ])
     if (pacienteId.value) {
       await ensureProntuario()
       await loadEvolucoes()
@@ -1257,1115 +1708,45 @@ onMounted(async () => {
             </div>
           </template>
           <template v-else-if="secaoKey === 'h-familiar'">
-            <div class="space-y-4">
-              <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1">
-                  Histórico do pai
-                </label>
-                <textarea
-                  v-model="historiaFamiliar.historicoPai"
-                  class="form-input text-xs min-h-[72px] resize-y"
-                  placeholder="Digite o histórico do pai"
-                />
-              </div>
-              <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1">
-                  Histórico da mãe
-                </label>
-                <textarea
-                  v-model="historiaFamiliar.historicoMae"
-                  class="form-input text-xs min-h-[72px] resize-y"
-                  placeholder="Digite o histórico da mãe"
-                />
-              </div>
-
-              <div class="space-y-3">
-                <div
-                  v-for="(parente, index) in historiaFamiliar.parentes"
-                  :key="index"
-                  class="space-y-1"
-                >
-                  <p class="text-xs font-semibold text-gray-700">
-                    {{ parente.tipo }}
-                  </p>
-                  <div
-                    class="grid grid-cols-1 md:grid-cols-[0.8fr,0.5fr,1.1fr] gap-3 items-center"
-                  >
-                    <div class="flex items-center gap-4 text-xs">
-                      <label class="inline-flex items-center gap-1">
-                        <input
-                          v-model="parente.possui"
-                          :name="`parente-${index}`"
-                          class="text-primary focus:ring-primary"
-                          type="radio"
-                          value="sim"
-                        />
-                        <span>Sim</span>
-                      </label>
-                      <label class="inline-flex items-center gap-1">
-                        <input
-                          v-model="parente.possui"
-                          :name="`parente-${index}`"
-                          class="text-primary focus:ring-primary"
-                          type="radio"
-                          value="nao"
-                        />
-                        <span>Não</span>
-                      </label>
-                    </div>
-                    <select
-                      v-model="parente.quantidade"
-                      class="form-input text-xs"
-                    >
-                      <option value="">
-                        Quantos
-                      </option>
-                      <option
-                        v-for="q in 10"
-                        :key="q"
-                        :value="String(q)"
-                      >
-                        {{ q }}
-                      </option>
-                    </select>
-                    <input
-                      v-model="parente.comentario"
-                      class="form-input text-xs"
-                      placeholder="Comentário"
-                      type="text"
-                    />
-                  </div>
-                </div>
-                <button
-                  class="inline-flex items-center gap-1 text-xs text-primary-700 font-semibold hover:underline"
-                  type="button"
-                  @click="
-                    historiaFamiliar.parentes.push({
-                      tipo: 'Outro parente',
-                      possui: '',
-                      quantidade: '',
-                      comentario: '',
-                    })
-                  "
-                >
-                  <span class="text-base leading-none">+</span>
-                  <span>Adicionar outro parente</span>
-                </button>
-              </div>
-
-              <div class="grid grid-cols-1 md:grid-cols-[0.7fr,1.3fr] gap-3">
-                <div>
-                  <label class="block text-xs font-semibold text-gray-700 mb-1">
-                    Histórico familiar
-                  </label>
-                  <select
-                    v-model="historiaFamiliar.historicoNivel"
-                    class="form-input text-xs"
-                  >
-                    <option value="">
-                      Nível familiar
-                    </option>
-                    <option value="primeiro_grau">
-                      1º grau
-                    </option>
-                    <option value="segundo_grau">
-                      2º grau
-                    </option>
-                    <option value="terceiro_grau">
-                      3º grau
-                    </option>
-                  </select>
-                </div>
-                <div class="pt-5 md:pt-0">
-                  <input
-                    v-model="historiaFamiliar.historicoNivelDescricao"
-                    class="form-input text-xs"
-                    placeholder="Digite o histórico familiar"
-                    type="text"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1">
-                  Observação
-                </label>
-                <textarea
-                  v-model="historiaFamiliar.observacao"
-                  class="form-input text-xs min-h-[80px] resize-y"
-                  placeholder="Digite uma observação..."
-                />
-              </div>
-            </div>
+            <HistoriaFamiliarSection :historiaFamiliar="historiaFamiliar" />
           </template>
-          <template v-else-if="secaoKey === 'h-social'">
-            <div class="space-y-3">
-              <div class="grid grid-cols-1 md:grid-cols-[0.8fr,1.2fr] gap-3 items-center">
-                <div class="flex items-center gap-4 text-xs">
-                  <span class="font-semibold text-gray-700">
-                    Tabagismo?
-                  </span>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="historiaSocial.tabagismo"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="sim"
-                    />
-                    <span>Sim</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="historiaSocial.tabagismo"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="nao"
-                    />
-                    <span>Não</span>
-                  </label>
-                </div>
-                <input
-                  v-model="historiaSocial.tabagismoComentario"
-                  class="form-input text-xs"
-                  placeholder="Comentário"
-                  type="text"
-                />
-              </div>
-
-              <div class="grid grid-cols-1 md:grid-cols-[0.8fr,1.2fr] gap-3 items-center">
-                <div class="flex items-center gap-4 text-xs">
-                  <span class="font-semibold text-gray-700">
-                    Etilismo?
-                  </span>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="historiaSocial.etilismo"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="sim"
-                    />
-                    <span>Sim</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="historiaSocial.etilismo"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="nao"
-                    />
-                    <span>Não</span>
-                  </label>
-                </div>
-                <input
-                  v-model="historiaSocial.etilismoComentario"
-                  class="form-input text-xs"
-                  placeholder="Comentário"
-                  type="text"
-                />
-              </div>
-
-              <div class="grid grid-cols-1 md:grid-cols-[0.8fr,1.2fr] gap-3 items-center">
-                <div class="flex items-center gap-4 text-xs">
-                  <span class="font-semibold text-gray-700">
-                    Outro tipo de substância?
-                  </span>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="historiaSocial.outrasSubstancias"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="sim"
-                    />
-                    <span>Sim</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="historiaSocial.outrasSubstancias"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="nao"
-                    />
-                    <span>Não</span>
-                  </label>
-                </div>
-                <input
-                  v-model="historiaSocial.outrasSubstanciasComentario"
-                  class="form-input text-xs"
-                  placeholder="Comentário"
-                  type="text"
-                />
-              </div>
-
-              <div class="grid grid-cols-1 md:grid-cols-[0.8fr,1.2fr] gap-3 items-center">
-                <div class="flex items-center gap-4 text-xs">
-                  <span class="font-semibold text-gray-700">
-                    Prática atividade física?
-                  </span>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="historiaSocial.atividadeFisica"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="sim"
-                    />
-                    <span>Sim</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="historiaSocial.atividadeFisica"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="nao"
-                    />
-                    <span>Não</span>
-                  </label>
-                </div>
-                <input
-                  v-model="historiaSocial.atividadeFisicaComentario"
-                  class="form-input text-xs"
-                  placeholder="Comentário"
-                  type="text"
-                />
-              </div>
-            </div>
+           <template v-else-if="secaoKey === 'h-social'">
+            <HistoriaSocialSection :historiaSocial="historiaSocial" />
           </template>
           <template v-else-if="secaoKey === 'hpp'">
-            <div class="space-y-4">
-              <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1">
-                  História pregressa
-                </label>
-                <textarea
-                  v-model="historiaPregressa.textoGeral"
-                  class="form-input text-xs min-h-[120px] resize-y"
-                  placeholder="Digite a história pregressa do paciente"
-                />
-              </div>
-
-              <div class="space-y-4">
-                <div class="flex items-center gap-4 text-xs">
-                  <span class="font-semibold text-gray-700">
-                    Alergia
-                  </span>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="historiaPregressa.alergiaPossui"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="nao"
-                    />
-                    <span>Não</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="historiaPregressa.alergiaPossui"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="sim"
-                    />
-                    <span>Sim</span>
-                  </label>
-                </div>
-
-                <div
-                  v-if="historiaPregressa.alergiaPossui === 'sim'"
-                  class="space-y-2"
-                >
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label class="block text-[11px] font-semibold text-primary-700 mb-1">
-                        Alergia
-                      </label>
-                    </div>
-                    <div>
-                      <label class="block text-[11px] font-semibold text-primary-700 mb-1">
-                        Observações
-                      </label>
-                    </div>
-                  </div>
-                  <div
-                    v-for="(item, index) in historiaPregressa.alergiasDetalhadas"
-                    :key="index"
-                    class="grid grid-cols-[1.4fr,1.4fr,auto] gap-3 items-center"
-                  >
-                    <div class="flex gap-2">
-                      <select
-                        :value="item.alergia"
-                        class="form-input text-xs flex-1"
-                        @change="onAlergiaSelectChange($event, index)"
-                      >
-                        <option value="">
-                          Selecione a alergia
-                        </option>
-                        <option
-                          v-for="nome in alergiasPool"
-                          :key="nome"
-                          :value="nome"
-                        >
-                          {{ nome }}
-                        </option>
-                        <option value="__outra__">
-                          Outra (cadastrar nova...)
-                        </option>
-                      </select>
-                    </div>
-                    <input
-                      v-model="item.observacao"
-                      class="form-input text-xs"
-                      placeholder="Digite uma observação"
-                      type="text"
-                    />
-                    <button
-                      v-if="historiaPregressa.alergiasDetalhadas.length > 1"
-                      class="h-8 w-8 inline-flex items-center justify-center rounded-md border border-red-100 text-red-600 hover:bg-red-50"
-                      type="button"
-                      @click="historiaPregressa.alergiasDetalhadas.splice(index, 1)"
-                    >
-                      <i class="fa-solid fa-trash" aria-hidden="true"></i>
-                    </button>
-                  </div>
-                  <button
-                    class="mt-1 inline-flex items-center gap-1 text-xs text-primary-700 font-semibold hover:underline"
-                    type="button"
-                    @click="
-                      historiaPregressa.alergiasDetalhadas.push({
-                        alergia: '',
-                        observacao: '',
-                      })
-                    "
-                  >
-                    <span class="text-base leading-none">+</span>
-                    <span>Adicionar alergia</span>
-                  </button>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-[0.8fr,1.4fr] gap-3 items-center">
-                  <div class="flex items-center gap-4 text-xs">
-                    <span class="font-semibold text-gray-700">
-                      Uso de medicamento(s)
-                    </span>
-                    <label class="inline-flex items-center gap-1">
-                      <input
-                        v-model="historiaPregressa.usoMedicamentos"
-                        class="text-primary focus:ring-primary"
-                        type="radio"
-                        value="nao"
-                      />
-                      <span>Não</span>
-                    </label>
-                    <label class="inline-flex items-center gap-1">
-                      <input
-                        v-model="historiaPregressa.usoMedicamentos"
-                        class="text-primary focus:ring-primary"
-                        type="radio"
-                        value="sim"
-                      />
-                      <span>Sim</span>
-                    </label>
-                  </div>
-                  <input
-                    v-model="historiaPregressa.usoMedicamentosDescricao"
-                    class="form-input text-xs"
-                    placeholder="Digite qual o(s) medicamento(s)"
-                    type="text"
-                  />
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-[0.9fr,1.3fr] gap-3 items-center">
-                  <div class="flex items-center gap-4 text-xs">
-                    <span class="font-semibold text-gray-700">
-                      Cirurgia(s) anterior(es)
-                    </span>
-                    <label class="inline-flex items-center gap-1">
-                      <input
-                        v-model="historiaPregressa.cirurgiasAnteriores"
-                        class="text-primary focus:ring-primary"
-                        type="radio"
-                        value="nao"
-                      />
-                      <span>Não</span>
-                    </label>
-                    <label class="inline-flex items-center gap-1">
-                      <input
-                        v-model="historiaPregressa.cirurgiasAnteriores"
-                        class="text-primary focus:ring-primary"
-                        type="radio"
-                        value="sim"
-                      />
-                      <span>Sim</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div
-                  v-if="historiaPregressa.cirurgiasAnteriores === 'sim'"
-                  class="space-y-2"
-                >
-                  <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
-                      <label class="block text-[11px] font-semibold text-primary-700 mb-1">
-                        Cirurgia
-                      </label>
-                    </div>
-                    <div>
-                      <label class="block text-[11px] font-semibold text-primary-700 mb-1">
-                        Ano
-                      </label>
-                    </div>
-                    <div>
-                      <label class="block text-[11px] font-semibold text-primary-700 mb-1">
-                        Observações
-                      </label>
-                    </div>
-                  </div>
-                  <div
-                    v-for="(item, index) in historiaPregressa.cirurgiasDetalhadas"
-                    :key="index"
-                    class="grid grid-cols-[1.4fr,0.7fr,1.4fr,auto] gap-3 items-center"
-                  >
-                    <div class="flex gap-2">
-                      <select
-                        :value="item.cirurgia"
-                        class="form-input text-xs flex-1"
-                        @change="onCirurgiaSelectChange($event, index)"
-                      >
-                        <option value="">
-                          Selecione a cirurgia
-                        </option>
-                        <option
-                          v-for="nome in cirurgiasPool"
-                          :key="nome"
-                          :value="nome"
-                        >
-                          {{ nome }}
-                        </option>
-                        <option value="__outra__">
-                          Outra (cadastrar nova...)
-                        </option>
-                      </select>
-                    </div>
-                    <input
-                      v-model="item.ano"
-                      class="form-input text-xs"
-                      placeholder="Ano"
-                      type="number"
-                      min="1900"
-                      max="2100"
-                    />
-                    <input
-                      v-model="item.observacao"
-                      class="form-input text-xs"
-                      placeholder="Digite uma observação"
-                      type="text"
-                    />
-                    <button
-                      v-if="historiaPregressa.cirurgiasDetalhadas.length > 1"
-                      class="h-8 w-8 inline-flex items-center justify-center rounded-md border border-red-100 text-red-600 hover:bg-red-50"
-                      type="button"
-                      @click="historiaPregressa.cirurgiasDetalhadas.splice(index, 1)"
-                    >
-                      <i class="fa-solid fa-trash" aria-hidden="true"></i>
-                    </button>
-                  </div>
-                  <button
-                    class="mt-1 inline-flex items-center gap-1 text-xs text-primary-700 font-semibold hover:underline"
-                    type="button"
-                    @click="
-                      historiaPregressa.cirurgiasDetalhadas.push({
-                        cirurgia: '',
-                        ano: '',
-                        observacao: '',
-                      })
-                    "
-                  >
-                    <span class="text-base leading-none">+</span>
-                    <span>Adicionar cirurgia</span>
-                  </button>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-[0.8fr,1.4fr] gap-3 items-center">
-                  <div class="flex items-center gap-4 text-xs">
-                    <span class="font-semibold text-gray-700">
-                      Doença(s) prévia(s)
-                    </span>
-                    <label class="inline-flex items-center gap-1">
-                      <input
-                        v-model="historiaPregressa.doencasPrevias"
-                        class="text-primary focus:ring-primary"
-                        type="radio"
-                        value="nao"
-                      />
-                      <span>Não</span>
-                    </label>
-                    <label class="inline-flex items-center gap-1">
-                      <input
-                        v-model="historiaPregressa.doencasPrevias"
-                        class="text-primary focus:ring-primary"
-                        type="radio"
-                        value="sim"
-                      />
-                      <span>Sim</span>
-                    </label>
-                  </div>
-                  <input
-                    v-model="historiaPregressa.doencasDescricao"
-                    class="form-input text-xs"
-                    placeholder="Digite qual(is) a(s) doença(s) prévia(s)"
-                    type="text"
-                  />
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">
-                      Tipo de cicatrização
-                    </label>
-                    <select
-                      v-model="historiaPregressa.tipoCicatrizacaoNivel"
-                      class="form-input text-xs"
-                    >
-                      <option value="">
-                        Selecione o nível
-                      </option>
-                      <option value="boa">
-                        Boa
-                      </option>
-                      <option value="regular">
-                        Regular
-                      </option>
-                      <option value="ruim">
-                        Ruim / queloide
-                      </option>
-                    </select>
-                  </div>
-                  <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">
-                      Descrição
-                    </label>
-                    <input
-                      v-model="historiaPregressa.tipoCicatrizacaoDescricao"
-                      class="form-input text-xs"
-                      placeholder="Descrição"
-                      type="text"
-                    />
-                  </div>
-                </div>
-
-                <div class="border-t border-gray-100 pt-3 mt-2 space-y-3">
-                  <p class="text-xs font-semibold text-gray-700">
-                    Sexo
-                    <span
-                      v-if="pacienteSexo"
-                      class="ml-2 text-[11px] font-normal text-gray-600"
-                    >
-                      ({{ pacienteSexo }})
-                    </span>
-                  </p>
-
-                  <div class="grid grid-cols-1 md:grid-cols-[0.9fr,1.3fr] gap-3 items-center">
-                    <div class="flex items-center gap-4 text-xs">
-                      <span class="font-semibold text-gray-700">
-                        Usa anticoncepcional?
-                      </span>
-                      <label class="inline-flex items-center gap-1">
-                        <input
-                          v-model="historiaPregressa.usaAnticoncepcional"
-                          class="text-primary focus:ring-primary"
-                          type="radio"
-                          value="sim"
-                        />
-                        <span>Sim</span>
-                      </label>
-                      <label class="inline-flex items-center gap-1">
-                        <input
-                          v-model="historiaPregressa.usaAnticoncepcional"
-                          class="text-primary focus:ring-primary"
-                          type="radio"
-                          value="nao"
-                        />
-                        <span>Não</span>
-                      </label>
-                    </div>
-                    <input
-                      v-model="historiaPregressa.usaAnticoncepcionalQual"
-                      class="form-input text-xs"
-                      placeholder="Qual?"
-                      type="text"
-                    />
-                  </div>
-
-                  <div class="grid grid-cols-1 md:grid-cols-[0.9fr,1.3fr] gap-3 items-center">
-                    <div class="flex items-center gap-4 text-xs">
-                      <span class="font-semibold text-gray-700">
-                        Usa algum outro método contraceptivo?
-                      </span>
-                      <label class="inline-flex items-center gap-1">
-                        <input
-                          v-model="historiaPregressa.usaOutroMetodo"
-                          class="text-primary focus:ring-primary"
-                          type="radio"
-                          value="sim"
-                        />
-                        <span>Sim</span>
-                      </label>
-                      <label class="inline-flex items-center gap-1">
-                        <input
-                          v-model="historiaPregressa.usaOutroMetodo"
-                          class="text-primary focus:ring-primary"
-                          type="radio"
-                          value="nao"
-                        />
-                        <span>Não</span>
-                      </label>
-                    </div>
-                    <input
-                      v-model="historiaPregressa.usaOutroMetodoQual"
-                      class="form-input text-xs"
-                      placeholder="Qual?"
-                      type="text"
-                    />
-                  </div>
-
-                  <div class="grid grid-cols-1 md:grid-cols-[0.9fr,1.3fr] gap-3 items-center">
-                    <div class="flex items-center gap-4 text-xs">
-                      <span class="font-semibold text-gray-700">
-                        Está ou já passou por gravidez?
-                      </span>
-                      <label class="inline-flex items-center gap-1">
-                        <input
-                          v-model="historiaPregressa.gravidaOuJaEsteve"
-                          class="text-primary focus:ring-primary"
-                          type="radio"
-                          value="sim"
-                        />
-                        <span>Sim</span>
-                      </label>
-                      <label class="inline-flex items-center gap-1">
-                        <input
-                          v-model="historiaPregressa.gravidaOuJaEsteve"
-                          class="text-primary focus:ring-primary"
-                          type="radio"
-                          value="nao"
-                        />
-                        <span>Não</span>
-                      </label>
-                    </div>
-                    <input
-                      v-model="historiaPregressa.gravidaDescricao"
-                      class="form-input text-xs"
-                      placeholder="Descreva se foi parto normal ou cesáreas e quantos"
-                      type="text"
-                    />
-                  </div>
-
-                  <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">
-                      G(x) P(y) A(z)
-                    </label>
-                    <input
-                      v-model="historiaPregressa.gestacaoGpa"
-                      class="form-input text-xs"
-                      placeholder="Digite..."
-                      type="text"
-                    />
-                  </div>
-
-                  <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">
-                      Observações
-                    </label>
-                    <textarea
-                      v-model="historiaPregressa.observacoes"
-                      class="form-input text-xs min-h-[80px] resize-y"
-                      placeholder="Digite uma observação..."
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
+            <HistoriaPregressaSection
+              :historiaPregressa="historiaPregressa"
+              :alergiasPool="alergiasPool"
+              :cirurgiasPool="cirurgiasPool"
+              :medicacoesPool="medicacoesPool"
+              :doencasCronicasPool="doencasCronicasPool"
+              :pacienteSexo="pacienteSexo"
+              :isPacienteFeminino="isPacienteFeminino"
+              :onAlergiaSelectChange="onAlergiaSelectChange"
+              :onCirurgiaSelectChange="onCirurgiaSelectChange"
+              :onMedicacaoSelectChange="onMedicacaoSelectChange"
+              :onDoencaCronicaSelectChange="onDoencaCronicaSelectChange"
+            />
           </template>
           <template v-else-if="secaoKey === 'exame-fisico'">
-            <div class="space-y-4">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label class="block text-xs font-semibold text-gray-700 mb-1">
-                    Peso
-                  </label>
-                  <input
-                    v-model="exameFisico.peso"
-                    class="form-input text-xs"
-                    placeholder="Digite o peso em Kg"
-                    type="text"
-                  />
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-gray-700 mb-1">
-                    Altura
-                  </label>
-                  <input
-                    v-model="exameFisico.altura"
-                    class="form-input text-xs"
-                    placeholder="Digite a altura em Metros"
-                    type="text"
-                  />
-                </div>
-                <div class="flex flex-col justify-end">
-                  <span class="block text-xs font-semibold text-gray-700 mb-1">
-                    IMC
-                  </span>
-                  <span class="text-sm font-semibold text-gray-800">
-                    {{ imcValor }}
-                  </span>
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 md:grid-cols-[0.8fr,1.2fr] gap-3 items-center">
-                <div class="flex items-center gap-4 text-xs">
-                  <span class="font-semibold text-gray-700">
-                    Ectoscopia
-                  </span>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="exameFisico.ectoscopia"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="sim"
-                    />
-                    <span>Sim</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="exameFisico.ectoscopia"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="nao"
-                    />
-                    <span>Não</span>
-                  </label>
-                </div>
-                <input
-                  v-model="exameFisico.ectoscopiaComentario"
-                  class="form-input text-xs"
-                  placeholder="Comentário"
-                  type="text"
-                />
-              </div>
-
-              <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1">
-                  Ectoscopia
-                </label>
-                <textarea
-                  v-model="exameFisico.ectoscopiaDescricao"
-                  class="form-input text-xs min-h-[72px] resize-y"
-                  placeholder="Digite..."
-                />
-              </div>
-
-              <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1">
-                  Peso / Altura / IMC / Ectoscopia
-                </label>
-                <textarea
-                  v-model="exameFisico.resumoPesoAlturaImcEctoscopia"
-                  class="form-input text-xs min-h-[72px] resize-y"
-                  placeholder="Digite..."
-                />
-              </div>
-            </div>
+            <ExameFisicoSection
+              :exameFisico="exameFisico"
+              :imcValor="imcValor"
+            />
           </template>
           <template v-else-if="secaoKey === 'equipe-cirurgica'">
-            <div class="space-y-3">
-              <p class="text-xs font-semibold text-gray-700">
-                Profissionais
-              </p>
-              <div
-                v-for="(item, index) in equipe.profissionais"
-                :key="index"
-                class="grid grid-cols-1 md:grid-cols-2 gap-3 items-center"
-              >
-                <select
-                  v-model="item.profissional"
-                  class="form-input text-xs"
-                >
-                  <option value="">
-                    Selecione os profissionais
-                  </option>
-                  <option value="cirurgiao">
-                    Cirurgião
-                  </option>
-                  <option value="auxiliar">
-                    Auxiliar
-                  </option>
-                  <option value="anestesiologista">
-                    Anestesiologista
-                  </option>
-                  <option value="enfermeiro">
-                    Enfermeiro
-                  </option>
-                  <option value="outro">
-                    Outro profissional
-                  </option>
-                </select>
-                <div class="flex items-center gap-2">
-                  <input
-                    v-model="item.comentario"
-                    class="form-input text-xs flex-1"
-                    placeholder="Comentário"
-                    type="text"
-                  />
-                  <button
-                    v-if="equipe.profissionais.length > 1"
-                    class="h-8 w-8 inline-flex items-center justify-center rounded-md border border-red-100 text-red-600 hover:bg-red-50"
-                    type="button"
-                    @click="equipe.profissionais.splice(index, 1)"
-                  >
-                    <i class="fa-solid fa-trash" aria-hidden="true"></i>
-                  </button>
-                </div>
-              </div>
-              <button
-                class="inline-flex items-center gap-1 text-xs text-primary-700 font-semibold hover:underline"
-                type="button"
-                @click="
-                  equipe.profissionais.push({
-                    profissional: '',
-                    comentario: '',
-                  })
-                "
-              >
-                <span class="text-base leading-none">+</span>
-                <span>Adicionar outro profissional</span>
-              </button>
-            </div>
+            <EquipeCirurgicaSection
+              :equipe="equipe"
+              :profissionaisOpcoes="['Cirurgião', 'Auxiliar', 'Anestesiologista', 'Enfermeiro', 'Outro profissional']"
+            />
           </template>
           <template v-else-if="secaoKey === 'fotos-paciente'">
-            <div class="space-y-3">
-              <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1">
-                  Anexo de imagem
-                </label>
-                <div class="grid grid-cols-1 md:grid-cols-[1.2fr,1.2fr,auto] gap-3 items-center">
-                  <input
-                    class="form-input text-xs"
-                    type="file"
-                    @change="
-                      (e: Event) => {
-                        const input = e.target as HTMLInputElement | null
-                        fotosPaciente.novoArquivo =
-                          input?.files && input.files[0] ? input.files[0] : null
-                      }
-                    "
-                  />
-                  <input
-                    v-model="fotosPaciente.novaObservacao"
-                    class="form-input text-xs"
-                    placeholder="Digite observação do arquivo"
-                    type="text"
-                  />
-                  <button
-                    class="h-9 w-9 inline-flex items-center justify-center rounded-md bg-primary-50 text-primary-700 hover:bg-primary-100 border border-primary-100"
-                    type="button"
-                    @click="
-                      fotosPaciente.novoArquivo &&
-                        fotosPaciente.anexos.push({
-                          nome: fotosPaciente.novoArquivo.name,
-                          observacao: fotosPaciente.novaObservacao,
-                        });
-                      fotosPaciente.novoArquivo = null;
-                      fotosPaciente.novaObservacao = '';
-                    "
-                  >
-                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                  </button>
-                </div>
-              </div>
-
-              <div
-                v-for="(anexo, index) in fotosPaciente.anexos"
-                :key="`${anexo.nome}-${index}`"
-                class="grid grid-cols-1 md:grid-cols-[1.2fr,1.2fr,auto] gap-3 items-center"
-              >
-                <div class="form-input text-xs flex items-center gap-2 bg-gray-50">
-                  <span class="text-gray-500 truncate">
-                    {{ anexo.nome }}
-                  </span>
-                </div>
-                <input
-                  v-model="anexo.observacao"
-                  class="form-input text-xs"
-                  placeholder="Digite observação do arquivo"
-                  type="text"
-                />
-                <button
-                  class="h-8 w-8 inline-flex items-center justify-center rounded-md border border-red-100 text-red-600 hover:bg-red-50"
-                  type="button"
-                  @click="fotosPaciente.anexos.splice(index, 1)"
-                >
-                  <i class="fa-solid fa-trash" aria-hidden="true"></i>
-                </button>
-              </div>
-            </div>
+            <FotosPacienteSection :fotosPaciente="fotosPaciente" />
           </template>
           <template v-else-if="secaoKey === 'evolucao-pos-op'">
-            <div class="space-y-4">
-              <div>
-                <textarea
-                  v-model="evolucaoPosOperatoria.observacao"
-                  class="form-input text-xs min-h-[120px] resize-y"
-                  placeholder="Digite a observação"
-                />
-              </div>
-
-              <div class="grid grid-cols-1 md:grid-cols-[1.4fr,1.2fr] gap-3 items-center">
-                <div class="flex flex-wrap items-center gap-4 text-xs">
-                  <span class="font-semibold text-gray-700">
-                    Como está a evolução do paciente?
-                  </span>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="evolucaoPosOperatoria.evolucaoPaciente"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="otima"
-                    />
-                    <span>Ótima</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="evolucaoPosOperatoria.evolucaoPaciente"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="boa"
-                    />
-                    <span>Boa</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="evolucaoPosOperatoria.evolucaoPaciente"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="regular"
-                    />
-                    <span>Regular</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="evolucaoPosOperatoria.evolucaoPaciente"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="ruim"
-                    />
-                    <span>Ruim</span>
-                  </label>
-                </div>
-                <input
-                  v-model="evolucaoPosOperatoria.evolucaoComentario"
-                  class="form-input text-xs"
-                  placeholder="Comentário"
-                  type="text"
-                />
-              </div>
-
-              <div class="grid grid-cols-1 md:grid-cols-[1.2fr,1.4fr] gap-3 items-center">
-                <div class="flex items-center gap-4 text-xs">
-                  <span class="font-semibold text-gray-700">
-                    Está seguindo corretamente as orientações pós operatórias?
-                  </span>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="evolucaoPosOperatoria.seguindoOrientacoes"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="nao"
-                    />
-                    <span>Não</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1">
-                    <input
-                      v-model="evolucaoPosOperatoria.seguindoOrientacoes"
-                      class="text-primary focus:ring-primary"
-                      type="radio"
-                      value="sim"
-                    />
-                    <span>Sim</span>
-                  </label>
-                </div>
-                <input
-                  v-model="evolucaoPosOperatoria.orientacoesComentario"
-                  class="form-input text-xs"
-                  placeholder="Comentário"
-                  type="text"
-                />
-              </div>
-
-              <div class="space-y-3">
-                <div>
-                  <label class="block text-xs font-semibold text-gray-700 mb-1">
-                    Anexo de imagem do pós operatório
-                  </label>
-                  <div class="grid grid-cols-1 md:grid-cols-[1.2fr,1.2fr,auto] gap-3 items-center">
-                    <input
-                      class="form-input text-xs"
-                      type="file"
-                      @change="
-                        (e: Event) => {
-                          const input = e.target as HTMLInputElement | null
-                          evolucaoPosOperatoria.novoArquivo =
-                            input?.files && input.files[0] ? input.files[0] : null
-                        }
-                      "
-                    />
-                    <input
-                      v-model="evolucaoPosOperatoria.novaObservacao"
-                      class="form-input text-xs"
-                      placeholder="Digite observação do arquivo"
-                      type="text"
-                    />
-                    <button
-                      class="h-9 w-9 inline-flex items-center justify-center rounded-md bg-primary-50 text-primary-700 hover:bg-primary-100 border border-primary-100"
-                      type="button"
-                      @click="
-                        evolucaoPosOperatoria.novoArquivo &&
-                          evolucaoPosOperatoria.anexosImagem.push({
-                            nome: evolucaoPosOperatoria.novoArquivo.name,
-                            observacao: evolucaoPosOperatoria.novaObservacao,
-                          });
-                        evolucaoPosOperatoria.novoArquivo = null;
-                        evolucaoPosOperatoria.novaObservacao = '';
-                      "
-                    >
-                      <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                    </button>
-                  </div>
-                </div>
-
-                <div
-                  v-for="(anexo, index) in evolucaoPosOperatoria.anexosImagem"
-                  :key="`${anexo.nome}-${index}`"
-                  class="grid grid-cols-1 md:grid-cols-[1.2fr,1.2fr,auto] gap-3 items-center"
-                >
-                  <div class="form-input text-xs flex items-center gap-2 bg-gray-50">
-                    <span class="text-gray-500 truncate">
-                      {{ anexo.nome }}
-                    </span>
-                  </div>
-                  <input
-                    v-model="anexo.observacao"
-                    class="form-input text-xs"
-                    placeholder="Digite observação do arquivo"
-                    type="text"
-                  />
-                  <button
-                    class="h-8 w-8 inline-flex items-center justify-center rounded-md border border-red-100 text-red-600 hover:bg-red-50"
-                    type="button"
-                    @click="evolucaoPosOperatoria.anexosImagem.splice(index, 1)"
-                  >
-                    <i class="fa-solid fa-trash" aria-hidden="true"></i>
-                  </button>
-                </div>
-              </div>
-            </div>
+            <EvolucaoPosOperatoriaSection
+              :evolucaoPosOperatoria="evolucaoPosOperatoria"
+            />
           </template>
           <template v-else-if="secaoKey === 'procedimentos-indicados'">
             <div class="space-y-3">
@@ -2411,137 +1792,7 @@ onMounted(async () => {
             </div>
           </template>
           <template v-else-if="secaoKey === 'exames-realizados'">
-            <div class="space-y-4">
-              <div class="bg-gray-50 rounded-lg p-3 border border-gray-100 space-y-3">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">
-                      Tipo de exame
-                    </label>
-                    <select
-                      v-model="examesRealizados.tipoExame"
-                      class="form-input text-xs"
-                    >
-                      <option value="">
-                        Tipo de exame (Laboratorial)
-                      </option>
-                      <option value="laboratorial">
-                        Laboratorial
-                      </option>
-                      <option value="imagem">
-                        Imagem
-                      </option>
-                      <option value="clinico">
-                        Clínico
-                      </option>
-                    </select>
-                  </div>
-                  <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">
-                      Material do exame
-                    </label>
-                    <input
-                      v-model="examesRealizados.materialExame"
-                      class="form-input text-xs"
-                      placeholder="Material do exame (Sangue)"
-                      type="text"
-                    />
-                  </div>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">
-                      Nome de exame
-                    </label>
-                    <input
-                      v-model="examesRealizados.nomeExame"
-                      class="form-input text-xs"
-                      placeholder="Nome de exame"
-                      type="text"
-                    />
-                  </div>
-                  <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">
-                      Comentário
-                    </label>
-                    <input
-                      v-model="examesRealizados.comentarioExame"
-                      class="form-input text-xs"
-                      placeholder="Comentário"
-                      type="text"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div class="space-y-3">
-                <div>
-                  <label class="block text-xs font-semibold text-gray-700 mb-1">
-                    Anexo de imagem
-                  </label>
-                  <div class="grid grid-cols-1 md:grid-cols-[1.2fr,1.2fr,auto] gap-3 items-center">
-                    <input
-                      class="form-input text-xs"
-                      type="file"
-                      @change="
-                        (e: Event) => {
-                          const input = e.target as HTMLInputElement | null
-                          examesRealizados.novoAnexoArquivo =
-                            input?.files && input.files[0] ? input.files[0] : null
-                        }
-                      "
-                    />
-                    <input
-                      v-model="examesRealizados.novoAnexoObservacao"
-                      class="form-input text-xs"
-                      placeholder="Digite observação do arquivo"
-                      type="text"
-                    />
-                    <button
-                      class="h-9 w-9 inline-flex items-center justify-center rounded-md bg-primary-50 text-primary-700 hover:bg-primary-100 border border-primary-100"
-                      type="button"
-                      @click="
-                        examesRealizados.novoAnexoArquivo &&
-                          examesRealizados.anexosImagem.push({
-                            nome: examesRealizados.novoAnexoArquivo.name,
-                            observacao: examesRealizados.novoAnexoObservacao,
-                          });
-                        examesRealizados.novoAnexoArquivo = null;
-                        examesRealizados.novoAnexoObservacao = '';
-                      "
-                    >
-                      <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                    </button>
-                  </div>
-                </div>
-
-                <div
-                  v-for="(anexo, index) in examesRealizados.anexosImagem"
-                  :key="`${anexo.nome}-${index}`"
-                  class="grid grid-cols-1 md:grid-cols-[1.2fr,1.2fr,auto] gap-3 items-center"
-                >
-                  <div class="form-input text-xs flex items-center gap-2 bg-gray-50">
-                    <span class="text-gray-500 truncate">
-                      {{ anexo.nome }}
-                    </span>
-                  </div>
-                  <input
-                    v-model="anexo.observacao"
-                    class="form-input text-xs"
-                    placeholder="Esta foto contempla a frente do rosto do paciente que estará..."
-                    type="text"
-                  />
-                  <button
-                    class="h-8 w-8 inline-flex items-center justify-center rounded-md border border-red-100 text-red-600 hover:bg-red-50"
-                    type="button"
-                    @click="examesRealizados.anexosImagem.splice(index, 1)"
-                  >
-                    <i class="fa-solid fa-trash" aria-hidden="true"></i>
-                  </button>
-                </div>
-              </div>
-            </div>
+            <ExamesRealizadosSection :examesRealizados="examesRealizados" />
           </template>
           <template v-else>
             <textarea
@@ -2656,6 +1907,78 @@ onMounted(async () => {
           class="btn-primary text-xs py-1.5 px-3 disabled:opacity-60 disabled:cursor-not-allowed"
           :disabled="!cirurgiaModalNome.trim()"
           @click="salvarNovaCirurgia"
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+  <div
+    v-if="isMedicacaoModalOpen"
+    class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+  >
+    <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg p-5">
+      <h2 class="text-sm font-semibold text-primary-700 mb-2">
+        Nova medicação
+      </h2>
+      <p class="text-xs text-gray-500 mb-3">
+        Digite o nome da nova medicação. Ela ficará disponível apenas neste estabelecimento.
+      </p>
+      <input
+        v-model="medicacaoModalNome"
+        class="form-input text-xs mb-4"
+        placeholder="Ex.: Losartana 50mg"
+        type="text"
+      />
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          class="text-xs text-gray-500 underline"
+          @click="fecharMedicacaoModal"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          class="btn-primary text-xs py-1.5 px-3 disabled:opacity-60 disabled:cursor-not-allowed"
+          :disabled="!medicacaoModalNome.trim()"
+          @click="salvarNovaMedicacao"
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+  <div
+    v-if="isDoencaModalOpen"
+    class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+  >
+    <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg p-5">
+      <h2 class="text-sm font-semibold text-primary-700 mb-2">
+        Nova doença crônica / comorbidade
+      </h2>
+      <p class="text-xs text-gray-500 mb-3">
+        Digite o nome da nova doença. Ela ficará disponível apenas neste estabelecimento.
+      </p>
+      <input
+        v-model="doencaModalNome"
+        class="form-input text-xs mb-4"
+        placeholder="Ex.: Hipertensão arterial sistêmica"
+        type="text"
+      />
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          class="text-xs text-gray-500 underline"
+          @click="fecharDoencaModal"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          class="btn-primary text-xs py-1.5 px-3 disabled:opacity-60 disabled:cursor-not-allowed"
+          :disabled="!doencaModalNome.trim()"
+          @click="salvarNovaDoencaCronica"
         >
           Salvar
         </button>
