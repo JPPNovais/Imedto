@@ -4,19 +4,23 @@ import { supabase } from '@/lib/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedbackStore } from '@/stores/feedback'
 import { useRoute } from 'vue-router'
+import type { AnexoItem } from '../types'
 import HistoriaFamiliarSection from '../components/HistoriaFamiliarSection.vue'
 import HistoriaSocialSection from '../components/HistoriaSocialSection.vue'
 import HistoriaPregressaSection from '../components/HistoriaPregressaSection.vue'
 import ExamesRealizadosSection from '../components/ExamesRealizadosSection.vue'
 import ExameFisicoSection from '../components/ExameFisicoSection.vue'
+import HistoriaDoencaAtualSection from '../components/HistoriaDoencaAtualSection.vue'
 import EquipeCirurgicaSection from '../components/EquipeCirurgicaSection.vue'
 import FotosPacienteSection from '../components/FotosPacienteSection.vue'
 import EvolucaoPosOperatoriaSection from '../components/EvolucaoPosOperatoriaSection.vue'
+import AnexosSection from '../components/AnexosSection.vue'
 import {
   alergiasDefault,
   cirurgiasDefault,
   medicacoesDefault,
   doencasCronicasDefault,
+  expectativasDefault,
 } from '../constants/medicalRecordConstants'
 
 type ModeloProntuario = {
@@ -55,9 +59,6 @@ type EvolucaoItem = {
 
 const evolucoes = ref<EvolucaoItem[]>([])
 const secaoConteudo = reactive<Record<string, string>>({})
-type AnexoItem = {
-  nome: string
-}
 
 type ExameAnexo = {
   nome: string
@@ -77,8 +78,9 @@ type ExameItem = {
   novoAnexoObservacao: string
 }
 
-const anexos = ref<AnexoItem[]>([])
-const hasAnexos = computed(() => (anexos.value ?? []).length > 0)
+const anexos = reactive({
+  arquivos: [] as AnexoItem[],
+})
 const hasEvolucoes = computed(() => (evolucoes.value ?? []).length > 0)
 
 const historiaAtual = reactive({
@@ -172,6 +174,11 @@ const doencasCronicasPool = ref<string[]>([...doencasCronicasDefault])
 const isDoencaModalOpen = ref(false)
 const doencaModalNome = ref('')
 const doencaModalIndex = ref<number | null>(null)
+
+const expectativasPool = ref<string[]>([...expectativasDefault])
+const isExpectativaModalOpen = ref(false)
+const expectativaModalNome = ref('')
+const expectativaModalIndex = ref<number | null>(null)
 
 async function loadAlergiasPool() {
   const filtros = supabase
@@ -297,6 +304,39 @@ async function loadDoencasCronicasPool() {
   doencasCronicasPool.value = Array.from(set)
 }
 
+async function loadExpectativasPool() {
+  const filtros = supabase
+    .from('prontuario_variaveis_pool')
+    .select('nome, estabelecimento_id')
+    .eq('tipo', 'expectativa')
+
+  if (estabelecimentoId.value) {
+    filtros.or(
+      `estabelecimento_id.is.null,estabelecimento_id.eq.${estabelecimentoId.value}`,
+    )
+  } else {
+    filtros.is('estabelecimento_id', null)
+  }
+
+  const { data, error } = await filtros.order('nome')
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  const nomes = (data ?? []).map((row: { nome: string }) => row.nome)
+  const set = new Set(expectativasDefault)
+  nomes.forEach((n) => {
+    if (n && !set.has(n)) {
+      set.add(n)
+    }
+  })
+  expectativasPool.value = Array.from(set).sort((a, b) =>
+    a.localeCompare(b, 'pt-BR'),
+  )
+}
+
 async function adicionarAlergiaAoPool(novaAlergia: string) {
   if (!estabelecimentoId.value) return
   const nome = novaAlergia.trim()
@@ -390,6 +430,30 @@ async function adicionarDoencaCronicaAoPool(novaDoenca: string) {
   }
 }
 
+async function adicionarExpectativaAoPool(novaExpectativa: string) {
+  if (!estabelecimentoId.value) return
+  const nome = novaExpectativa.trim()
+  if (!nome) return
+
+  if (expectativasPool.value.includes(nome)) return
+
+  expectativasPool.value = [
+    ...expectativasPool.value,
+    nome,
+  ].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+
+  const { error } = await supabase.from('prontuario_variaveis_pool').insert({
+    estabelecimento_id: estabelecimentoId.value,
+    tipo: 'expectativa',
+    nome,
+  })
+
+  if (error) {
+    console.error(error)
+    feedback.error('Não foi possível salvar a nova expectativa.')
+  }
+}
+
 function onAlergiaSelectChange(event: Event, index: number) {
   const target = event.target as HTMLSelectElement | null
   if (!target) return
@@ -448,6 +512,21 @@ function onDoencaCronicaSelectChange(event: Event, index: number) {
   } else {
     historiaPregressa.doencasDetalhadas[index].doenca = value
   }
+}
+
+function onProcedimentoSelectChange(event: Event, index: number) {
+  const target = event.target as HTMLSelectElement | null
+  if (!target) return
+  const value = target.value
+
+  if (value === '__nova__') {
+    expectativaModalIndex.value = index
+    expectativaModalNome.value = ''
+    isExpectativaModalOpen.value = true
+    target.value = ''
+    return
+  }
+  historiaAtual.procedimentos[index] = value
 }
 
 async function salvarNovaAlergia() {
@@ -526,6 +605,25 @@ function fecharDoencaModal() {
   isDoencaModalOpen.value = false
   doencaModalIndex.value = null
   doencaModalNome.value = ''
+}
+
+async function salvarNovaExpectativa() {
+  if (expectativaModalIndex.value === null) return
+  const nome = expectativaModalNome.value.trim()
+  if (!nome) return
+
+  await adicionarExpectativaAoPool(nome)
+  historiaAtual.procedimentos[expectativaModalIndex.value] = nome
+
+  isExpectativaModalOpen.value = false
+  expectativaModalIndex.value = null
+  expectativaModalNome.value = ''
+}
+
+function fecharExpectativaModal() {
+  isExpectativaModalOpen.value = false
+  expectativaModalIndex.value = null
+  expectativaModalNome.value = ''
 }
 
 const historiaFamiliar = reactive({
@@ -682,6 +780,9 @@ const fotosPaciente = reactive({
 })
 
 const evolucaoPosOperatoria = reactive({
+  dpo: '',
+  destino: '',
+  dieta: '',
   observacao: '',
   evolucaoPaciente: '' as '' | 'otima' | 'boa' | 'regular' | 'ruim',
   evolucaoComentario: '',
@@ -758,20 +859,13 @@ const imcValor = computed(() => {
   return imc.toFixed(2)
 })
 
-function onAnexosChange(event: Event) {
-  const target = event.target as HTMLInputElement | null
-  if (!target?.files) return
-  const files = Array.from(target.files)
-  files.forEach((file) => {
-    anexos.value.push({ nome: file.name })
+function limparAnexos() {
+  anexos.arquivos.forEach((arquivo) => {
+    if (arquivo.previewUrl) {
+      URL.revokeObjectURL(arquivo.previewUrl)
+    }
   })
-  // limpa o input para permitir selecionar o mesmo arquivo novamente, se necessário
-  target.value = ''
-}
-
-function removeAnexo(index: number) {
-  if (!anexos.value || index < 0 || index >= anexos.value.length) return
-  anexos.value.splice(index, 1)
+  anexos.arquivos = []
 }
 
 const secoesDictionary: Record<
@@ -1090,7 +1184,7 @@ async function salvarEvolucao() {
   activeSections.value.forEach((key) => {
     if (key === 'anexos') {
       secoesPayload[key] = {
-        arquivos: anexos.value.map((a) => ({ nome: a.nome })),
+        arquivos: anexos.arquivos.map((a) => ({ nome: a.nome })),
       }
     } else if (key === 'hda') {
       secoesPayload[key] = {
@@ -1269,6 +1363,9 @@ async function salvarEvolucao() {
       }
     } else if (key === 'evolucao-pos-op') {
       secoesPayload[key] = {
+        dpo: evolucaoPosOperatoria.dpo || null,
+        destino: evolucaoPosOperatoria.destino || null,
+        dieta: evolucaoPosOperatoria.dieta || null,
         observacao: evolucaoPosOperatoria.observacao || '',
         evolucao_paciente: evolucaoPosOperatoria.evolucaoPaciente || null,
         evolucao_comentario: evolucaoPosOperatoria.evolucaoComentario || '',
@@ -1345,7 +1442,7 @@ async function salvarEvolucao() {
     activeSections.value.forEach((k) => {
       secaoConteudo[k] = ''
     })
-    anexos.value = []
+    limparAnexos()
     historiaAtual.historicoQueixa = ''
     historiaAtual.procedimentos = ['']
     historiaPregressa.textoGeral = ''
@@ -1480,6 +1577,9 @@ async function salvarEvolucao() {
     fotosPaciente.anexos = []
     fotosPaciente.novoArquivo = null
     fotosPaciente.novaObservacao = ''
+    evolucaoPosOperatoria.dpo = ''
+    evolucaoPosOperatoria.destino = ''
+    evolucaoPosOperatoria.dieta = ''
     evolucaoPosOperatoria.observacao = ''
     evolucaoPosOperatoria.evolucaoPaciente = ''
     evolucaoPosOperatoria.evolucaoComentario = ''
@@ -1531,6 +1631,7 @@ onMounted(async () => {
       loadCirurgiasPool(),
       loadMedicacoesPool(),
       loadDoencasCronicasPool(),
+      loadExpectativasPool(),
     ])
     if (pacienteId.value) {
       await ensureProntuario()
@@ -1634,78 +1735,14 @@ onMounted(async () => {
             {{ secoesDictionary[secaoKey]?.label || secaoKey }}
           </h3>
           <template v-if="secaoKey === 'anexos'">
-            <input
-              type="file"
-              multiple
-              class="text-xs mb-2"
-              @change="onAnexosChange"
-            />
-            <div v-if="!hasAnexos" class="text-[11px] text-gray-500">
-              Nenhum arquivo adicionado. Selecione arquivos para anexar ao
-              prontuário.
-            </div>
-            <ul
-              v-else
-              class="text-[11px] text-gray-700 space-y-1"
-            >
-              <li
-                v-for="(anexo, index) in anexos"
-                :key="`${anexo.nome}-${index}`"
-                class="flex items-center justify-between"
-              >
-                <span class="truncate max-w-[180px]">
-                  {{ anexo.nome }}
-                </span>
-                <button
-                  type="button"
-                  class="text-[10px] text-red-500 hover:underline"
-                  @click="removeAnexo(index)"
-                >
-                  Remover
-                </button>
-              </li>
-            </ul>
+            <AnexosSection :anexos="anexos" />
           </template>
           <template v-else-if="secaoKey === 'hda'">
-            <div class="space-y-4">
-              <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1">
-                  Histórico da queixa
-                </label>
-                <textarea
-                  v-model="historiaAtual.historicoQueixa"
-                  class="form-input text-xs min-h-[120px] resize-y"
-                  placeholder="Digite o histórico da(s) queixa(s) do paciente..."
-                />
-              </div>
-              <div class="space-y-3">
-                <div
-                  v-for="(proc, index) in historiaAtual.procedimentos"
-                  :key="index"
-                >
-                  <label class="block text-xs font-semibold text-gray-700 mb-1">
-                    Procedimento desejado
-                    <span v-if="historiaAtual.procedimentos.length > 1">
-                      #{{ index + 1 }}
-                    </span>
-                  </label>
-                  <input
-                    v-model="historiaAtual.procedimentos[index]"
-                    class="form-input text-xs"
-                    placeholder="Digite o procedimento desejado"
-                    type="text"
-                  />
-                </div>
-                <button
-                  class="inline-flex items-center gap-1 text-xs text-primary-700 font-semibold hover:underline"
-                  type="button"
-                  @click="historiaAtual.procedimentos.push('')"
-                >
-                  <span class="text-base leading-none">+</span>
-                  <span>Adicionar outro procedimento</span>
-                </button>
-              </div>
-            </div>
+            <HistoriaDoencaAtualSection
+              :historiaAtual="historiaAtual"
+              :expectativasPool="expectativasPool"
+              :onProcedimentoSelectChange="onProcedimentoSelectChange"
+            />
           </template>
           <template v-else-if="secaoKey === 'h-familiar'">
             <HistoriaFamiliarSection :historiaFamiliar="historiaFamiliar" />
@@ -1979,6 +2016,42 @@ onMounted(async () => {
           class="btn-primary text-xs py-1.5 px-3 disabled:opacity-60 disabled:cursor-not-allowed"
           :disabled="!doencaModalNome.trim()"
           @click="salvarNovaDoencaCronica"
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+  <div
+    v-if="isExpectativaModalOpen"
+    class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+  >
+    <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg p-5">
+      <h2 class="text-sm font-semibold text-primary-700 mb-2">
+        Nova expectativa do paciente
+      </h2>
+      <p class="text-xs text-gray-500 mb-3">
+        Digite a nova expectativa. Ela ficará disponível como atalho neste estabelecimento.
+      </p>
+      <input
+        v-model="expectativaModalNome"
+        class="form-input text-xs mb-4"
+        placeholder="Ex.: Melhora estética"
+        type="text"
+      />
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          class="text-xs text-gray-500 underline"
+          @click="fecharExpectativaModal"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          class="btn-primary text-xs py-1.5 px-3 disabled:opacity-60 disabled:cursor-not-allowed"
+          :disabled="!expectativaModalNome.trim()"
+          @click="salvarNovaExpectativa"
         >
           Salvar
         </button>

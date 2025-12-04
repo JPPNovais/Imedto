@@ -44,3 +44,11 @@ export const doencasCronicasDefault = [
   'Obesidade',
 ]
 
+export const expectativasDefault = [
+  'Melhora estética',
+  'Redução da dor',
+  'Melhora funcional',
+  'Retorno ao trabalho/atividades',
+  'Melhora da autoestima',
+  'Melhora da qualidade de vida',
+]
