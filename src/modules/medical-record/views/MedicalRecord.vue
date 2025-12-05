@@ -15,12 +15,15 @@ import EquipeCirurgicaSection from '../components/EquipeCirurgicaSection.vue'
 import FotosPacienteSection from '../components/FotosPacienteSection.vue'
 import EvolucaoPosOperatoriaSection from '../components/EvolucaoPosOperatoriaSection.vue'
 import AnexosSection from '../components/AnexosSection.vue'
+import ProcedimentosIndicadosSection from '../components/ProcedimentosIndicadosSection.vue'
 import {
   alergiasDefault,
   cirurgiasDefault,
   medicacoesDefault,
   doencasCronicasDefault,
   expectativasDefault,
+  doencasHereditariasDefault,
+  procedimentosIndicadosDefault,
 } from '../constants/medicalRecordConstants'
 
 type ModeloProntuario = {
@@ -180,6 +183,19 @@ const isExpectativaModalOpen = ref(false)
 const expectativaModalNome = ref('')
 const expectativaModalIndex = ref<number | null>(null)
 
+const doencasHereditariasPool = ref<string[]>([...doencasHereditariasDefault])
+const isDoencaHereditModalOpen = ref(false)
+const doencaHereditModalNome = ref('')
+const doencaHereditModalContext = ref<'pai' | 'mae' | 'parente'>('pai')
+const doencaHereditModalParenteIndex = ref<number | null>(null)
+
+const procedimentosIndicadosPool = ref<string[]>([
+  ...procedimentosIndicadosDefault,
+])
+const isProcedimentoModalOpen = ref(false)
+const procedimentoModalNome = ref('')
+const procedimentoModalIndex = ref<number | null>(null)
+
 async function loadAlergiasPool() {
   const filtros = supabase
     .from('prontuario_variaveis_pool')
@@ -304,6 +320,37 @@ async function loadDoencasCronicasPool() {
   doencasCronicasPool.value = Array.from(set)
 }
 
+async function loadDoencasHereditariasPool() {
+  const filtros = supabase
+    .from('prontuario_variaveis_pool')
+    .select('nome, estabelecimento_id')
+    .eq('tipo', 'doenca_hereditaria')
+
+  if (estabelecimentoId.value) {
+    filtros.or(
+      `estabelecimento_id.is.null,estabelecimento_id.eq.${estabelecimentoId.value}`,
+    )
+  } else {
+    filtros.is('estabelecimento_id', null)
+  }
+
+  const { data, error } = await filtros.order('nome')
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  const nomes = (data ?? []).map((row: { nome: string }) => row.nome)
+  const set = new Set(doencasHereditariasDefault)
+  nomes.forEach((n) => {
+    if (n && !set.has(n)) {
+      set.add(n)
+    }
+  })
+  doencasHereditariasPool.value = Array.from(set)
+}
+
 async function loadExpectativasPool() {
   const filtros = supabase
     .from('prontuario_variaveis_pool')
@@ -335,6 +382,37 @@ async function loadExpectativasPool() {
   expectativasPool.value = Array.from(set).sort((a, b) =>
     a.localeCompare(b, 'pt-BR'),
   )
+}
+
+async function loadProcedimentosIndicadosPool() {
+  const filtros = supabase
+    .from('prontuario_variaveis_pool')
+    .select('nome, estabelecimento_id')
+    .eq('tipo', 'procedimento_indicado')
+
+  if (estabelecimentoId.value) {
+    filtros.or(
+      `estabelecimento_id.is.null,estabelecimento_id.eq.${estabelecimentoId.value}`,
+    )
+  } else {
+    filtros.is('estabelecimento_id', null)
+  }
+
+  const { data, error } = await filtros.order('nome')
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  const nomes = (data ?? []).map((row: { nome: string }) => row.nome)
+  const set = new Set(procedimentosIndicadosDefault)
+  nomes.forEach((n) => {
+    if (n && !set.has(n)) {
+      set.add(n)
+    }
+  })
+  procedimentosIndicadosPool.value = Array.from(set)
 }
 
 async function adicionarAlergiaAoPool(novaAlergia: string) {
@@ -430,6 +508,30 @@ async function adicionarDoencaCronicaAoPool(novaDoenca: string) {
   }
 }
 
+async function adicionarDoencaHereditaraAoPool(novaDoenca: string) {
+  if (!estabelecimentoId.value) return
+  const nome = novaDoenca.trim()
+  if (!nome) return
+
+  if (doencasHereditariasPool.value.includes(nome)) return
+
+  doencasHereditariasPool.value = [
+    ...doencasHereditariasPool.value,
+    nome,
+  ].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+
+  const { error } = await supabase.from('prontuario_variaveis_pool').insert({
+    estabelecimento_id: estabelecimentoId.value,
+    tipo: 'doenca_hereditaria',
+    nome,
+  })
+
+  if (error) {
+    console.error(error)
+    feedback.error('Não foi possível salvar a nova doença hereditária.')
+  }
+}
+
 async function adicionarExpectativaAoPool(novaExpectativa: string) {
   if (!estabelecimentoId.value) return
   const nome = novaExpectativa.trim()
@@ -451,6 +553,30 @@ async function adicionarExpectativaAoPool(novaExpectativa: string) {
   if (error) {
     console.error(error)
     feedback.error('Não foi possível salvar a nova expectativa.')
+  }
+}
+
+async function adicionarProcedimentoAoPool(novoProcedimento: string) {
+  if (!estabelecimentoId.value) return
+  const nome = novoProcedimento.trim()
+  if (!nome) return
+
+  if (procedimentosIndicadosPool.value.includes(nome)) return
+
+  procedimentosIndicadosPool.value = [
+    ...procedimentosIndicadosPool.value,
+    nome,
+  ].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+
+  const { error } = await supabase.from('prontuario_variaveis_pool').insert({
+    estabelecimento_id: estabelecimentoId.value,
+    tipo: 'procedimento_indicado',
+    nome,
+  })
+
+  if (error) {
+    console.error(error)
+    feedback.error('Não foi possível salvar o novo procedimento.')
   }
 }
 
@@ -519,14 +645,62 @@ function onProcedimentoSelectChange(event: Event, index: number) {
   if (!target) return
   const value = target.value
 
-  if (value === '__nova__') {
-    expectativaModalIndex.value = index
-    expectativaModalNome.value = ''
-    isExpectativaModalOpen.value = true
-    target.value = ''
-    return
+  if (value === '__outra__') {
+    procedimentoModalIndex.value = index
+    procedimentoModalNome.value = ''
+    isProcedimentoModalOpen.value = true
+    procedimentosIndicados.itens[index] = ''
+  } else {
+    procedimentosIndicados.itens[index] = value
   }
-  historiaAtual.procedimentos[index] = value
+}
+
+function onDoencaHereditPaiSelectChange(event: Event) {
+  const target = event.target as HTMLSelectElement | null
+  if (!target) return
+  const value = target.value
+
+  if (value === '__outra__') {
+    doencaHereditModalContext.value = 'pai'
+    doencaHereditModalParenteIndex.value = null
+    doencaHereditModalNome.value = ''
+    isDoencaHereditModalOpen.value = true
+    historiaFamiliar.historicoPaiDoenca = ''
+  } else {
+    historiaFamiliar.historicoPaiDoenca = value
+  }
+}
+
+function onDoencaHereditMaeSelectChange(event: Event) {
+  const target = event.target as HTMLSelectElement | null
+  if (!target) return
+  const value = target.value
+
+  if (value === '__outra__') {
+    doencaHereditModalContext.value = 'mae'
+    doencaHereditModalParenteIndex.value = null
+    doencaHereditModalNome.value = ''
+    isDoencaHereditModalOpen.value = true
+    historiaFamiliar.historicoMaeDoenca = ''
+  } else {
+    historiaFamiliar.historicoMaeDoenca = value
+  }
+}
+
+function onDoencaHereditParenteSelectChange(event: Event, index: number) {
+  const target = event.target as HTMLSelectElement | null
+  if (!target) return
+  const value = target.value
+
+  if (value === '__outra__') {
+    doencaHereditModalContext.value = 'parente'
+    doencaHereditModalParenteIndex.value = index
+    doencaHereditModalNome.value = ''
+    isDoencaHereditModalOpen.value = true
+    historiaFamiliar.parentes[index].doenca = ''
+  } else {
+    historiaFamiliar.parentes[index].doenca = value
+  }
 }
 
 async function salvarNovaAlergia() {
@@ -627,29 +801,35 @@ function fecharExpectativaModal() {
 }
 
 const historiaFamiliar = reactive({
+  historicoPaiDoenca: '',
   historicoPai: '',
+  historicoMaeDoenca: '',
   historicoMae: '',
   parentes: [
     {
       tipo: 'Irmã',
       possui: '' as '' | 'sim' | 'nao',
+      doenca: '',
+      grauParentesco: '',
       quantidade: '',
       comentario: '',
     },
     {
       tipo: 'Irmão',
       possui: '' as '' | 'sim' | 'nao',
+      doenca: '',
+      grauParentesco: '',
       quantidade: '',
       comentario: '',
     },
   ] as {
     tipo: string
     possui: '' | 'sim' | 'nao'
+    doenca: string
+    grauParentesco: string
     quantidade: string
     comentario: string
   }[],
-  historicoNivel: '',
-  historicoNivelDescricao: '',
   observacao: '',
 })
 
@@ -1253,6 +1433,8 @@ async function salvarEvolucao() {
       secoesPayload[key] = {
         historico_pai: historiaFamiliar.historicoPai || '',
         historico_mae: historiaFamiliar.historicoMae || '',
+        historico_pai_doenca: historiaFamiliar.historicoPaiDoenca || '',
+        historico_mae_doenca: historiaFamiliar.historicoMaeDoenca || '',
         parentes: historiaFamiliar.parentes.filter(
           (p) =>
             p.tipo.trim() ||
@@ -1260,9 +1442,6 @@ async function salvarEvolucao() {
             p.comentario.trim() ||
             !!p.possui,
         ),
-        historico_nivel: historiaFamiliar.historicoNivel || '',
-        historico_nivel_descricao:
-          historiaFamiliar.historicoNivelDescricao || '',
         observacao: historiaFamiliar.observacao || '',
       }
     } else if (key === 'h-social') {
@@ -1632,6 +1811,8 @@ onMounted(async () => {
       loadMedicacoesPool(),
       loadDoencasCronicasPool(),
       loadExpectativasPool(),
+      loadDoencasHereditariasPool(),
+      loadProcedimentosIndicadosPool(),
     ])
     if (pacienteId.value) {
       await ensureProntuario()
@@ -1745,7 +1926,15 @@ onMounted(async () => {
             />
           </template>
           <template v-else-if="secaoKey === 'h-familiar'">
-            <HistoriaFamiliarSection :historiaFamiliar="historiaFamiliar" />
+            <HistoriaFamiliarSection
+              :historiaFamiliar="historiaFamiliar"
+              :doencasHereditariasPool="doencasHereditariasPool"
+              :onDoencaHereditPaiSelectChange="onDoencaHereditPaiSelectChange"
+              :onDoencaHereditMaeSelectChange="onDoencaHereditMaeSelectChange"
+              :onDoencaHereditParenteSelectChange="
+                onDoencaHereditParenteSelectChange
+              "
+            />
           </template>
            <template v-else-if="secaoKey === 'h-social'">
             <HistoriaSocialSection :historiaSocial="historiaSocial" />
@@ -1786,47 +1975,11 @@ onMounted(async () => {
             />
           </template>
           <template v-else-if="secaoKey === 'procedimentos-indicados'">
-            <div class="space-y-3">
-              <div
-                v-for="(proc, index) in procedimentosIndicados.itens"
-                :key="index"
-                class="grid grid-cols-1 md:grid-cols-[1.4fr,auto] gap-2 items-center"
-              >
-                <select
-                  v-model="procedimentosIndicados.itens[index]"
-                  class="form-input text-xs"
-                >
-                  <option value="">
-                    Selecione o procedimento indicado
-                  </option>
-                  <option value="procedimento_a">
-                    Procedimento A
-                  </option>
-                  <option value="procedimento_b">
-                    Procedimento B
-                  </option>
-                  <option value="procedimento_c">
-                    Procedimento C
-                  </option>
-                </select>
-                <button
-                  v-if="procedimentosIndicados.itens.length > 1"
-                  class="h-8 w-8 inline-flex items-center justify-center rounded-md border border-red-100 text-red-600 hover:bg-red-50"
-                  type="button"
-                  @click="procedimentosIndicados.itens.splice(index, 1)"
-                >
-                  <i class="fa-solid fa-trash" aria-hidden="true"></i>
-                </button>
-              </div>
-              <button
-                class="inline-flex items-center gap-1 text-xs text-primary-700 font-semibold hover:underline"
-                type="button"
-                @click="procedimentosIndicados.itens.push('')"
-              >
-                <span class="text-base leading-none">+</span>
-                <span>Adicionar outro procedimento</span>
-              </button>
-            </div>
+            <ProcedimentosIndicadosSection
+              :procedimentosIndicados="procedimentosIndicados"
+              :procedimentosIndicadosPool="procedimentosIndicadosPool"
+              :onProcedimentoSelectChange="onProcedimentoSelectChange"
+            />
           </template>
           <template v-else-if="secaoKey === 'exames-realizados'">
             <ExamesRealizadosSection :examesRealizados="examesRealizados" />
@@ -1908,6 +2061,116 @@ onMounted(async () => {
           class="btn-primary text-xs py-1.5 px-3 disabled:opacity-60 disabled:cursor-not-allowed"
           :disabled="!alergiaModalNome.trim()"
           @click="salvarNovaAlergia"
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+  <div
+    v-if="isDoencaHereditModalOpen"
+    class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+  >
+    <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg p-5">
+      <h2 class="text-sm font-semibold text-primary-700 mb-2">
+        Nova doença hereditária
+      </h2>
+      <p class="text-xs text-gray-500 mb-3">
+        Digite o nome da nova doença hereditária. Ela ficará disponível apenas neste estabelecimento.
+      </p>
+      <input
+        v-model="doencaHereditModalNome"
+        class="form-input text-xs mb-4"
+        placeholder="Ex.: Doença coronariana precoce"
+        type="text"
+      />
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          class="text-xs text-gray-500 underline"
+          @click="
+            isDoencaHereditModalOpen = false;
+            doencaHereditModalNome = '';
+            doencaHereditModalParenteIndex = null;
+          "
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          class="btn-primary text-xs py-1.5 px-3 disabled:opacity-60 disabled:cursor-not-allowed"
+          :disabled="!doencaHereditModalNome.trim()"
+          @click="
+            (async () => {
+              const nome = doencaHereditModalNome.trim();
+              if (!nome) return;
+              await adicionarDoencaHereditaraAoPool(nome);
+              if (doencaHereditModalContext === 'pai') {
+                historiaFamiliar.historicoPaiDoenca = nome;
+              } else if (doencaHereditModalContext === 'mae') {
+                historiaFamiliar.historicoMaeDoenca = nome;
+              } else if (
+                doencaHereditModalContext === 'parente' &&
+                doencaHereditModalParenteIndex !== null
+              ) {
+                historiaFamiliar.parentes[doencaHereditModalParenteIndex].doenca =
+                  nome;
+              }
+              isDoencaHereditModalOpen = false;
+              doencaHereditModalNome = '';
+              doencaHereditModalParenteIndex = null;
+            })()
+          "
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+  <div
+    v-if="isProcedimentoModalOpen"
+    class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+  >
+    <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg p-5">
+      <h2 class="text-sm font-semibold text-primary-700 mb-2">
+        Novo procedimento indicado
+      </h2>
+      <p class="text-xs text-gray-500 mb-3">
+        Digite o nome do novo procedimento. Ele ficará disponível apenas neste estabelecimento.
+      </p>
+      <input
+        v-model="procedimentoModalNome"
+        class="form-input text-xs mb-4"
+        placeholder="Ex.: Colecistectomia laparoscópica"
+        type="text"
+      />
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          class="text-xs text-gray-500 underline"
+          @click="
+            isProcedimentoModalOpen = false;
+            procedimentoModalIndex = null;
+            procedimentoModalNome = '';
+          "
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          class="btn-primary text-xs py-1.5 px-3 disabled:opacity-60 disabled:cursor-not-allowed"
+          :disabled="!procedimentoModalNome.trim()"
+          @click="
+            (async () => {
+              const nome = procedimentoModalNome.trim();
+              if (!nome || procedimentoModalIndex === null) return;
+              await adicionarProcedimentoAoPool(nome);
+              procedimentosIndicados.itens[procedimentoModalIndex] = nome;
+              isProcedimentoModalOpen = false;
+              procedimentoModalIndex = null;
+              procedimentoModalNome = '';
+            })()
+          "
         >
           Salvar
         </button>

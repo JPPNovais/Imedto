@@ -44,6 +44,14 @@ export const doencasCronicasDefault = [
   'Obesidade',
 ]
 
+export const doencasHereditariasDefault = [
+  'Hipertensão arterial (familiar)',
+  'Doença coronariana precoce',
+  'Diabetes mellitus (familiar)',
+  'Neoplasias familiares',
+  'Dislipidemia familiar',
+]
+
 export const expectativasDefault = [
   'Melhora estética',
   'Redução da dor',
@@ -51,4 +59,15 @@ export const expectativasDefault = [
   'Retorno ao trabalho/atividades',
   'Melhora da autoestima',
   'Melhora da qualidade de vida',
+]
+
+export const procedimentosIndicadosDefault = [
+  'Colecistectomia laparoscópica',
+  'Herniorrafia inguinal',
+  'Artroscopia de joelho',
+  'Artroscopia de ombro',
+  'Cirurgia de varizes',
+  'Coleção de nódulo de mama',
+  'Septoplastia',
+  'Amigdalectomia',
 ]
